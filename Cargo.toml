@@ -1,0 +1,47 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+license = "BSL-1.0"
+
+# The Plugin SDK at contract 0.2, pinned to the commit
+# the Engine's loader speaks.
+[workspace.dependencies.runvil-plugin-sdk]
+version = "0.2.0"
+git = "https://github.com/cppalliance/runvil-plugin-api"
+rev = "63a2403761b925b1f52bcf361c97b4fb04c04d74"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+unsafe_op_in_unsafe_fn = "deny"
+future_incompatible = { level = "warn", priority = -1 }
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "deny"
+unescaped_backticks = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+dbg_macro = "warn"
+todo = "deny"
+undocumented_unsafe_blocks = "deny"
+missing_safety_doc = "deny"
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+exit = "deny"
+disallowed_methods = "deny"
+disallowed_types = "deny"
+disallowed_macros = "deny"
+# Cherry-picked out of pedantic: it flags product names (Runvil, OpenAI) in
+# prose, which reads worse backticked than the lint is worth.
+doc_markdown = "allow"
