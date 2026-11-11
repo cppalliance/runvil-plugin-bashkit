@@ -6,12 +6,12 @@ members = ["crates/*"]
 edition = "2024"
 license = "BSL-1.0"
 
-# The Plugin SDK at contract 0.2, pinned to the commit
-# the Engine's loader speaks.
+# The Plugin SDK at contract 0.4, pinned to a commit. A Host loads this
+# Plugin only when its Harness speaks the same contract version.
 [workspace.dependencies.runvil-plugin-sdk]
-version = "0.2.0"
+version = "0.4.0"
 git = "https://github.com/cppalliance/runvil-plugin-api"
-rev = "63a2403761b925b1f52bcf361c97b4fb04c04d74"
+rev = "03a9fa37d2fe690d42ee0aa5c7a8289173e8e0f2"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
