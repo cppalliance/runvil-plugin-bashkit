@@ -1,6 +1,7 @@
 [package]
 name = "plugin-bashkit"
 version = "0.1.0"
+description = "The bashkit Plugin for runvil: a shell that runs inside the run"
 edition.workspace = true
 license.workspace = true
 publish = false
@@ -11,11 +12,22 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
+# The Plugin contract's safe layer: the `Plugin` and `Pack` traits, what a
+# tool call is lent, and the entry point.
 runvil-plugin-sdk.workspace = true
+# The shell itself.
+bashkit.workspace = true
+# The runtime that runs bashkit's timers.
+tokio.workspace = true
+# The tool's definition is embedded JSON, parsed when the Plugin loads,
+# and a call's arguments arrive as JSON text.
+serde.workspace = true
+serde_json.workspace = true
 
-[dev-dependencies.runvil-plugin-sdk]
-workspace = true
-features = ["test-support"]
+[dev-dependencies]
+# `testing`, the fake Host, and its `Files` tree, which lends the shell a
+# run's files without a Harness.
+runvil-plugin-sdk = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true

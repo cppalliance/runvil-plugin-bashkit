@@ -1,0 +1,27 @@
+{
+  "wire_name": "Shell",
+  "description": "Executes a given command in a shell session with an optional time limit.\n\nThe shell is a bash interpreter that runs inside the run. Its commands are built in: there are no external programs such as git, npm, or docker, and no network.\n\n- The session lasts for the run: the working directory, variables, and functions carry over from one call to the next.\n- The shell has files of its own, which start empty and last for the run. It does not see the run's files.\n- Output past {output_cap} characters is cut in the middle: the result keeps the start and the end and says so.\n- Calls share the one session and run one at a time. Chain dependent commands with `&&`.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "command": {
+        "type": "string",
+        "description": "The command to execute"
+      },
+      "working_directory": {
+        "type": "string",
+        "description": "The absolute path to the working directory to execute the command in (defaults to current directory)"
+      },
+      "block_until_ms": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "How long to wait for the command to complete before stopping it (in milliseconds). Defaults to {timeout_ms}ms, and a larger value is lowered to that. The shell has no background, so a command that is stopped does not go on running."
+      },
+      "description": {
+        "type": "string",
+        "description": "Very short phrase naming what this command does; shown to the user after the word \"Ran\". Avoid leading with verbs or using trailing periods"
+      }
+    },
+    "required": ["command"]
+  }
+}

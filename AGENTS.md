@@ -26,6 +26,9 @@ Anything else gets a qualified lowercase name, such as Rust's built-in test harn
 - Prefer types and compiler checks, then behavior tests. Gate on yes/no properties, never on a score threshold that ordinary work edits.
 - Behavior changes ship with tests in the same change. Preserve behavior tests during refactors.
 - The Plugin crate depends on `runvil-plugin-sdk` and outside libraries alone, and writes no `unsafe`. The SDK owns the C boundary.
+- The tool's description and parameter schema come from `crates/plugin-bashkit/schemas/shell.json`. `EDITS.md` beside it records every difference from Cursor's definition, and a change to the JSON file changes `EDITS.md` with it.
+- bashkit's features that reach the network, the real file system, or another language's interpreter stay off.
+- bashkit starts a tokio timer for its time limit and for each `sleep`, so its futures are polled only inside the context of the Plugin's tokio runtime. The Plugin instance owns that runtime, whose one thread runs the timers, and dropping the instance joins the thread.
 - A Plugin shares its process with the Host, so nothing here installs process-global state, such as a panic hook (`clippy.toml` bans `std::panic::set_hook`), and nothing starts a thread that outlives the Plugin's unload. What every run shares lives in the Plugin instance and never in a `static`, so an unload frees it.
 - Comments explain a non-obvious constraint, ordering requirement, or workaround. A platform or external-bug workaround cites its upstream issue URL.
 

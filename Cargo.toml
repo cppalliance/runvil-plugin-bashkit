@@ -10,6 +10,20 @@ license = "BSL-1.0"
 # The Plugin SDK at contract 0.4, pinned to a commit. A Host loads this
 # Plugin only when its Harness speaks the same contract version.
 runvil-plugin-sdk = { version = "0.4.0", git = "https://github.com/cppalliance/runvil-plugin-api", rev = "03a9fa37d2fe690d42ee0aa5c7a8289173e8e0f2" }
+# The shell: a bash interpreter that runs in process, with every command
+# built in. Its default features are off, which leaves out its own tool
+# layer and the time zone database, and no feature that reaches the
+# network or the real file system is on. `jq` is on because a model
+# reaches for it to read JSON.
+bashkit = { version = "0.21", default-features = false, features = ["jq"] }
+# bashkit's time limit and its `sleep` are tokio timers, so the Plugin
+# owns a runtime that runs them. `sync` holds the channels a shell's file
+# requests cross.
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+# The tool's definition is embedded JSON, and a call's arguments arrive
+# as JSON text.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 # Parses this workspace's sources for the type-size check; `full` is the
 # feature that parses items.
 syn = { version = "3", features = ["full"] }
