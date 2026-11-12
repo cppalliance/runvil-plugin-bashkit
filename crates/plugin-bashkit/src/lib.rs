@@ -92,8 +92,9 @@
 //!
 //! - Depends on `runvil-plugin-sdk` and outside libraries alone, and
 //!   writes no `unsafe`.
-//! - Ships only as a dynamic library, so it exports `runvil_plugin`
-//!   unconditionally.
+//! - The `dll` feature exports `runvil_plugin`. A Host that links the
+//!   crate in turns the feature off and hands
+//!   `runvil_plugin_sdk::entry::<Bashkit>` to the Harness.
 //! - bashkit's features that reach the network, the real file system, or
 //!   another language's interpreter are off.
 //! - The shell's whole file system is `RunFiles`, with no layer of
@@ -185,7 +186,7 @@ impl Plugin for Bashkit {
     }
 }
 
-// Exports the C entry point `runvil_plugin`.
+#[cfg(feature = "dll")]
 runvil_plugin_sdk::export_plugin!(Bashkit);
 
 #[cfg(test)]

@@ -52,6 +52,12 @@ jobs:
       - name: Build the library Plugin
         run: cargo build --locked -p plugin-bashkit --release
 
+      # A Host finds the Plugin by this one symbol, and a build without
+      # the `dll` feature would still write a library, with no export.
+      - name: The library exports runvil_plugin
+        if: runner.os == 'Linux'
+        run: nm -D --defined-only target/release/libplugin_bashkit.so | grep -qw runvil_plugin
+
       # No build or test step may write into the repository; catch a
       # regression here rather than in a diff.
       - name: Clean tree

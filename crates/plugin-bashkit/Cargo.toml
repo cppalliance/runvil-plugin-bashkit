@@ -6,10 +6,10 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
-# A dynamic library only. A Host that links this Plugin in adds an rlib
-# and a feature gating `export_plugin!`, as hello-plugin has.
+# A dynamic library for a Host's Plugin directory, and an rlib, so a Host
+# can also link the Plugin in with `dll` off.
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # The Plugin contract's safe layer: the `Plugin` and `Pack` traits, what a
@@ -28,6 +28,12 @@ serde_json.workspace = true
 # `testing`, the fake Host, and its `Files` tree, which lends the shell a
 # run's files without a Harness.
 runvil-plugin-sdk = { workspace = true, features = ["test-support"] }
+
+[features]
+default = ["dll"]
+# Exports `runvil_plugin`. A Host that links this crate in turns it off,
+# because two linked Plugins exporting the symbol cannot share one binary.
+dll = []
 
 [lints]
 workspace = true
