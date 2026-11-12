@@ -49,15 +49,37 @@
 //! fails with a message that says so. bashkit's own limits also end a
 //! command, such as 10,000 iterations of a loop.
 //!
-//! The shell has files of its own, in memory, which start empty and last
-//! for the run. It does not see the run's files yet.
+//! # Where the file access goes
+//!
+//! The shell's files are the files of its run, and it starts at their
+//! root. Every read goes through the call's
+//! [`ToolCall`](runvil_plugin_sdk::ToolCall), never the disk directly, so
+//! the Host answers each one under the run's policy. A read that fails
+//! fails its command, which tells the script why as a shell would, and a
+//! read the policy denies shows the policy's own reason. The shell reads
+//! at most 16 MiB of one file.
+//!
+//! The contract reports what a path names and how long a file is. So a
+//! listing shows every entry with no write bit and a time at the start of
+//! 1970, and a link shows as a link whose target cannot be read.
+//!
+//! The shell cannot change files in this build, because contract 0.4 has
+//! no function that does. A command that writes, deletes, or renames a
+//! file fails with one fixed reason, `READ_ONLY` in `files.rs`, and the
+//! script goes on. A few commands end the whole call instead, with that
+//! reason in the failure: `tee` to a file and `sed -i` are two. Nothing
+//! else is done about a failed write here: writing comes with the
+//! contract's functions for it, and each refusal then becomes a write
+//! through the Host.
 //!
 //! # Where a command runs
 //!
-//! bash runs inside the steps of its tool call, on the Host's thread.
-//! bashkit never pauses during work that needs no timer, so a step lasts
-//! until its command ends or waits on one: a `sleep`, or the time limit.
-//! While a command waits, the Host steps the call with nothing to do.
+//! bash runs inside the steps of its tool call, on the Host's thread. A
+//! step runs the script until it ends, waits on a timer, or has made 32
+//! reads, and each read is answered at once through the step's file
+//! functions. bashkit never pauses during other work, so a step lasts as
+//! long as that work does, and while a command waits on a `sleep` the
+//! Host steps the call with nothing to do.
 //!
 //! ## Invariants
 //!
@@ -67,6 +89,10 @@
 //!   unconditionally.
 //! - bashkit's features that reach the network, the real file system, or
 //!   another language's interpreter are off.
+//! - The shell's whole file system is `RunFiles`, with no layer of
+//!   bashkit's over it: its root layout and its link following are off.
+//!   Every read reaches files through the running call's `ToolCall`, and
+//!   nothing changes a file.
 //! - The Plugin instance owns a tokio runtime with one worker thread,
 //!   whose only work is bashkit's timers. Dropping the instance drops the
 //!   runtime, which joins that thread, so an unload leaves no thread
@@ -85,6 +111,7 @@
 //!   [`InvalidArguments`](runvil_plugin_sdk::ToolErrorKind::InvalidArguments)
 //!   failure, and a key the schema does not declare is refused by name.
 
+mod files;
 #[cfg(test)]
 mod fixture;
 mod pack;

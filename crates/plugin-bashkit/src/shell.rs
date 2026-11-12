@@ -37,20 +37,19 @@ struct Arguments {
 
 /// One call, checked: what to run, where, and for how long.
 #[derive(Debug)]
-struct Request {
+struct Invocation {
     command: String,
     working_directory: Option<String>,
     limit: Duration,
 }
 
-impl Request {
-    /// The request `arguments`, the JSON text of a call's arguments,
-    /// describes.
+impl Invocation {
+    /// What `arguments`, the JSON text of a call's arguments, asks for.
     ///
     /// # Errors
     /// Returns an invalid-arguments failure that says what does not match
     /// the tool's parameters.
-    fn parse(arguments: &str) -> Result<Request, ToolError> {
+    fn parse(arguments: &str) -> Result<Invocation, ToolError> {
         let arguments: Arguments = serde_json::from_str(arguments).map_err(|error| {
             invalid(&format!(
                 "the arguments do not match the tool's parameters: {error}"
@@ -66,24 +65,25 @@ impl Request {
             Some(limit) => limit.min(TIMEOUT_MS),
             None => TIMEOUT_MS,
         };
-        Ok(Request {
+        Ok(Invocation {
             command: arguments.command,
             working_directory: arguments.working_directory,
             limit: Duration::from_millis(limit),
         })
     }
 
-    /// Runs the request in `shell` and returns what the call answers.
-    async fn run(&self, shell: &mut Shell) -> Result<ToolOutput, ToolError> {
+    /// Runs the command in `shell` for `call`, which performs the reads
+    /// of the run's files, and returns what the call answers.
+    async fn run(&self, shell: &mut Shell, call: ToolCall<'_>) -> Result<ToolOutput, ToolError> {
         if let Some(directory) = &self.working_directory {
             let change = format!("cd -- {}", quoted(directory));
-            let moved = shell.run(&change, self.limit).await;
+            let moved = shell.run(call, &change, self.limit).await;
             let moved = moved.map_err(|error| self.failure(&error))?;
             if moved.exit_code != 0 {
                 return Ok(ToolOutput::untrusted(render(&moved)));
             }
         }
-        let ran = shell.run(&self.command, self.limit).await;
+        let ran = shell.run(call, &self.command, self.limit).await;
         let ran = ran.map_err(|error| self.failure(&error))?;
         Ok(ToolOutput::untrusted(render(&ran)))
     }
@@ -129,10 +129,10 @@ pub(crate) async fn call(
     timers: &tokio::runtime::Handle,
     call: ToolCall<'_>,
 ) -> Result<ToolOutput, ToolError> {
-    let request = Request::parse(call.arguments())?;
+    let invocation = Invocation::parse(call.arguments())?;
     let mut held = session::turn(session).await;
     let mut shell = held.take().unwrap_or_else(|| Shell::new(timers));
-    let answer = request.run(&mut shell).await;
+    let answer = invocation.run(&mut shell, call).await;
     *held = Some(shell);
     answer
 }

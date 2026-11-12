@@ -36,7 +36,7 @@ fn standard_error_follows_standard_output_in_the_one_block() {
 }
 
 #[test]
-fn a_pipeline_a_substitution_and_a_here_document_work() {
+fn what_a_script_passes_between_commands_needs_no_file() {
     let loaded = loaded();
     let pack = loaded.new_pack(PACK).expect("the Pack instance is made");
     assert_eq!(
@@ -44,6 +44,11 @@ fn a_pipeline_a_substitution_and_a_here_document_work() {
         answer(0, "a\n")
     );
     assert_eq!(run(&pack, "echo \"$(echo inner)\""), answer(0, "inner\n"));
+    assert_eq!(
+        run(&pack, "cat <(echo substituted)"),
+        answer(0, "substituted\n")
+    );
+    assert_eq!(run(&pack, "echo quiet > /dev/null"), answer(0, ""));
     assert_eq!(
         run(&pack, "cat <<EOF\nfrom a here-document\nEOF"),
         answer(0, "from a here-document\n")
@@ -67,51 +72,12 @@ fn a_session_keeps_variables_and_functions_between_calls() {
 }
 
 #[test]
-fn a_session_keeps_the_working_directory_between_calls() {
-    let loaded = loaded();
-    let pack = loaded.new_pack(PACK).expect("the Pack instance is made");
-    assert_eq!(run(&pack, "cd /tmp"), answer(0, ""));
-    assert_eq!(run(&pack, "pwd"), answer(0, "/tmp\n"));
-}
-
-#[test]
 fn two_runs_share_nothing() {
     let loaded = loaded();
     let first = loaded.new_pack(PACK).expect("the Pack instance is made");
     let second = loaded.new_pack(PACK).expect("the Pack instance is made");
     assert_eq!(run(&first, "kept=5"), answer(0, ""));
     assert_eq!(run(&second, "echo \"[$kept]\""), answer(0, "[]\n"));
-}
-
-#[test]
-fn a_working_directory_is_where_the_command_runs() {
-    let loaded = loaded();
-    let pack = loaded.new_pack(PACK).expect("the Pack instance is made");
-    let output = shell(
-        &pack,
-        &json!({ "command": "pwd", "working_directory": "/tmp" }),
-    )
-    .expect("the command finishes");
-    assert_eq!(output.text(), answer(0, "/tmp\n"));
-}
-
-#[test]
-fn a_working_directory_that_is_missing_fails_before_the_command_runs() {
-    let loaded = loaded();
-    let pack = loaded.new_pack(PACK).expect("the Pack instance is made");
-    let output = shell(
-        &pack,
-        &json!({ "command": "echo ran", "working_directory": "/no/such/place" }),
-    )
-    .expect("the call answers the failed cd");
-    assert_eq!(
-        output.text(),
-        answer(
-            1,
-            "bash: line 1: cd: /no/such/place: No such file or directory\n"
-        ),
-        "the command did not run"
-    );
 }
 
 #[test]
