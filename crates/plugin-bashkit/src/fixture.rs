@@ -1,7 +1,7 @@
 //! What the tests of several modules share: the Plugin loaded through the
 //! SDK's fake Host, and a `Shell` call on one run's instance of the Pack.
 
-use runvil_plugin_sdk::testing::{self, Files, Loaded, PackRun};
+use runvil_plugin_sdk::testing::{self, Call, Files, Loaded, PackRun};
 use runvil_plugin_sdk::{ToolError, ToolOutput};
 use serde_json::Value;
 
@@ -28,6 +28,16 @@ pub(crate) fn over(loaded: &Loaded, files: Files) -> PackRun<'_> {
 pub(crate) fn shell(pack: &PackRun<'_>, args: &Value) -> Result<ToolOutput, ToolError> {
     pack.call("shell", &args.to_string())
         .expect("the call follows the contract")
+}
+
+/// Steps `call`, which a test started, to its end, and returns the output
+/// of the command it ran.
+pub(crate) fn finish(call: &mut Call<'_>) -> ToolOutput {
+    loop {
+        if let Some(result) = call.step().expect("the step follows the contract") {
+            return result.expect("the command finishes");
+        }
+    }
 }
 
 /// The text a finished `command` answers on `pack`.

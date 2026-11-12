@@ -43,6 +43,13 @@
 //! next call. The calls of a run take turns on the session, so two calls
 //! the Engine issues together run one after the other.
 //!
+//! A call the Host abandons, as it does on a stop or a cancel, stops its
+//! script where it is and takes the shell with it. The next call starts a
+//! new session: the working directory is the root again, and the
+//! variables and functions are gone. A script cut off part way may have
+//! left the shell in a state no command would, so the shell is not kept.
+//! A call abandoned while it waits its turn changes nothing.
+//!
 //! Every command is built into bashkit: the shell starts no process, and
 //! it has no network. A command is stopped after 30 seconds, or after the
 //! `block_until_ms` its call names when that is less, and the call then
@@ -184,14 +191,29 @@ runvil_plugin_sdk::export_plugin!(Bashkit);
 #[cfg(test)]
 mod tests {
     use runvil_plugin_sdk::sys::RV_OK;
+    use serde_json::json;
 
-    use crate::fixture::loaded;
+    use crate::fixture::{PACK, answer, loaded, run};
 
     #[test]
     fn the_plugin_loads_as_bashkit_at_its_version_and_unloads() {
         let loaded = loaded();
         assert_eq!(loaded.name(), "bashkit");
         assert_eq!(loaded.version(), env!("CARGO_PKG_VERSION"));
+        assert_eq!(loaded.unload(), RV_OK);
+    }
+
+    #[test]
+    fn the_plugin_unloads_after_a_run_finished_calls_and_abandoned_one() {
+        let loaded = loaded();
+        {
+            let pack = loaded.new_pack(PACK).expect("the Pack instance is made");
+            assert_eq!(run(&pack, "sleep 0.01; echo slept"), answer(0, "slept\n"));
+            let mut abandoned = pack.start("shell", &json!({ "command": "sleep 20" }).to_string());
+            assert_eq!(abandoned.step(), Ok(None), "the call sleeps");
+            // The call is dropped here with its timer running, and then
+            // the instance.
+        }
         assert_eq!(loaded.unload(), RV_OK);
     }
 }

@@ -142,3 +142,7 @@ async fn drive<F: Future>(
     })
     .await
 }
+
+#[cfg(test)]
+#[path = "session-tests.rs"]
+mod tests;
