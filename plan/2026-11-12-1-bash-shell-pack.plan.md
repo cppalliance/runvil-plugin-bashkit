@@ -4,40 +4,40 @@ overview: The first of two stages. Give the bashkit Plugin a real Pack, `runvil/
 todos:
   - id: rules
     content: "Plugin: bring the repository's rules level with the std Plugin's: its clippy.toml, a build-checks crate holding runvil's per-type size limits, no file length limit, the CI docs job with --document-private-items, and an AGENTS.md that states them"
-    status: pending
+    status: completed
   - id: shell-pack
     content: "Plugin: add bashkit, tokio, serde, and serde_json; give the Plugin its runtime; insert the runvil/bash Pack with the Shell definition (schemas/shell.json and EDITS.md); run a command in a per-run session, with tests for output, exit codes, session state, arguments, the time limit, and the output cap"
-    status: pending
+    status: completed
   - id: run-files
     content: "Plugin: add RunFiles as the shell's file system, so the shell reads the run's files through the running call and every change fails with one fixed sentence and nothing more is built around the failure; tests for reads, listings, denied reads, and one refused write"
-    status: pending
+    status: completed
   - id: abandon-unload
     content: "Plugin: make a call the Host drops leave the Pack usable, with a fresh shell on the next call; test a call dropped during sleep and an unload after calls"
-    status: pending
+    status: completed
   - id: linkable
     content: "Plugin: make the crate linkable by a Host, with crate types cdylib and rlib and a dll feature, on by default, that gates export_plugin!, as plugin-std has"
-    status: pending
+    status: completed
   - id: verify
     content: "Plugin: run fmt, clippy with warnings denied, the full test suite, docs with warnings denied, and the release build of plugin-bashkit, and update the crate docs in lib.rs"
-    status: pending
+    status: completed
   - id: push-plugin
     content: "Plugin: push master to cppalliance/runvil-plugin-bashkit, so runvil can pin the commit"
-    status: pending
+    status: completed
   - id: ship-library
     content: "runvil: pin the Plugin by commit, add the workshop-plugin-bashkit crate, and make the build, the installers, the tier check, deny.toml, and the tests' Plugin directories handle two libraries where they handle std's one"
-    status: pending
+    status: completed
   - id: chat-md
     content: "runvil: name bash under uses: in the built-in chat.md and offer it with tools.offer(\"bash\"); update the tests that pin the chat's Packs or tool list"
-    status: pending
+    status: completed
   - id: c-drive-switch
     content: "runvil: add the C_DRIVE switch beside ENABLED in crates/workshop/server/src/agents/language_guide.rs, committed as false, mounting C:\\ read-only at /c; add a test that two mapped directories are both visible; update the module docs there and in agents.rs"
-    status: pending
+    status: completed
   - id: verify-runvil
     content: "runvil: run the repository's checks: tests, both clippy sets with warnings denied, fmt, docs, cargo test -p build-xtask, and cargo deny check"
-    status: pending
+    status: completed
   - id: pull-request
     content: "runvil: push the branch to origin and open a pull request against cppalliance/runvil"
-    status: pending
+    status: completed
 isProject: false
 ---
 
@@ -115,7 +115,7 @@ sequenceDiagram
 - **Read-only.** `RunFiles` is the shell's whole file system, with no layer above it. Each of its methods that would change a file returns one fixed error, such as `the shell cannot change files in this build; it can only read the run's files`, and that is all the handling a write gets in this stage. Redirects to `/dev/null` still work, because bashkit handles them in its interpreter. The shell starts in `/`, the run's root.
 - **Only the run's files.** bashkit's builder would add two layers over `RunFiles`, and both are turned off. Its root layout (`rootfs`) shows a made-up `/etc`, `/proc`, and `/usr/bin` that no other tool of the run could see. Its link following resolves every component of every path with extra `stat` calls and reads link targets, which the contract does not report; the Host follows links itself when it reads.
 - **Limits.** bashkit's own limits bound each command: 30 seconds, 10,000 commands, 10,000 iterations of a loop, and 1 MiB of each output stream. Its limits for a whole session are lifted, because they would stop a run's shell for good after 1,000 calls. `RunFiles` refuses to read a file over 16 MiB, the ceiling the std tools have.
-- **One script at a time.** Calls of one Pack instance may arrive together, since the Engine issues a round's calls at once. The session sits in a slot: a call takes the shell out and puts it back when it ends, and a call that finds the slot empty ends its step and looks again on the next.
+- **One script at a time.** Calls of one Pack instance may arrive together, since the Engine issues a round's calls at once. The session sits in a slot that one call holds at a time: the call takes the shell out and puts it back when it ends, and a call that finds the slot held ends its step and looks again on the next.
 - **Abandoned calls.** When the Host drops a call, bashkit's future drops with it, which stops the script. The shell it had taken is gone, so the next call builds a fresh one, as bashkit's own `ExecutionHandle` does.
 
 ### The tool definition
@@ -142,7 +142,7 @@ Placeholders are filled from the constants the code enforces, as in `std`.
 
 ### Results
 
-- A finished command returns untrusted text in Cursor's shape: an `Exit code:` line, then stdout followed by stderr in one fenced block. A nonzero exit code is still a result.
+- A finished command returns untrusted text in Cursor's shape: an `Exit code:` line, a `Command output:` line, and then stdout followed by stderr in one fenced block. A nonzero exit code is still a result.
 - Output over 20,000 characters keeps its first 10,000 and its last 10,000, which is what Cursor shows a model. The start holds the command's first lines and the end holds the error.
 - A command that bashkit fails (syntax error, resource limit) is a `ToolError` of kind `Backend` with bashkit's message.
 - A command that runs past its time limit fails with a message that says it was stopped and that the session is still usable. The research warns that a timeout reported as a bare failure invites a blind retry.
@@ -161,6 +161,7 @@ All under [runvil-plugin-bashkit/crates/plugin-bashkit](runvil-plugin-bashkit/cr
 - `src/shell.rs`: the arguments, one call's step loop, and the result text.
 - `src/session.rs`: one run's shell session.
 - `src/files.rs`: `RunFiles`, the request type, serving a request from a `ToolCall`, and the refusal of changes.
+- `src/fixture.rs`: what the tests of several modules share. The tests of `shell.rs`, `files.rs`, and `session.rs` sit beside each, in `shell-tests.rs`, `files-tests.rs`, and `session-tests.rs`, and `tests/it/main.rs` loads the Plugin as a Host that links it does.
 - `schemas/shell.json`, `schemas/EDITS.md`.
 
 ```toml
@@ -207,6 +208,7 @@ workshop-plugin-bashkit = { path = "crates/workshop/plugin-bashkit" }
 - [runvil/crates/build-xtask/src/tidy.rs](runvil/crates/build-xtask/src/tidy.rs): the `PLUGINS` tier gains the crate, and its test with it.
 - [runvil/crates/build-workshop/src/main/plugin.rs](runvil/crates/build-workshop/src/main/plugin.rs): `library_name`, `built_library`, `bundle_config`, `check_bundled`, and `place` each handle the one std library. They take the list of shipped libraries instead, and their callers in `pipeline.rs` and `installer.rs` and their tests follow.
 - [runvil/crates/workshop/desktop/installer.nsi](runvil/crates/workshop/desktop/installer.nsi): the install, decline, and uninstall lines for `plugins\plugin_std.dll` gain a twin for `plugins\plugin_bashkit.dll`.
+- [runvil/.github/installers/cell.ps1](runvil/.github/installers/cell.ps1) and [runvil/.github/installers/cell.sh](runvil/.github/installers/cell.sh): each requires both libraries when Workshop is selected, and requires `runvil-workshop --plugins` to list `std` and `bashkit`.
 - [runvil/.github/workflows/installers.yml](runvil/.github/workflows/installers.yml): the path filter gains the new crate.
 - [runvil/deny.toml](runvil/deny.toml): `allow-git` gains the Plugin's repository. The license allowlist gains `bzip2-1.0.6`, with a comment naming the one crate that needs it. bashkit depends on `bzip2` 0.6.1, which is `MIT OR Apache-2.0` itself but by default pulls `libbz2-rs-sys`, the Rust port of bzip2, whose license is `bzip2-1.0.6`, a permissive BSD-style license. bashkit turns that default on, so the port cannot be avoided from outside.
 - Test Plugin directories: `plugin_dir` in `crates/workshop/server/src/agents/tests.rs` and `std_plugin_dir` in `crates/workshop/server/tests/common/mod.rs` hold std's library alone. They hold both, because the built-in chat will require both.
@@ -283,12 +285,26 @@ While the switch is on, every run, and so the model's provider, can read any fil
 - **Idle polling during a wait.** Contract 0.4 has no wake function, so while a script sits in a bash `sleep`, or a call waits for the session, the Host keeps stepping with nothing to do.
 - **Both go away later.** Running bash on a thread of the Plugin's own, with a wake function in the contract, keeps every step short and removes the empty steps. The trial will show how much either one matters.
 - **No writes, so no scratch files.** A script that writes a temporary file fails. This stage accepts that, and whatever else turns out to need writable files is what the trial is for.
-- **Workshop's build and installers grow.** bashkit and its dependencies join every Workshop build, and its library joins every installer.
-- **Unverified until built.** Nothing was built during planning, so these are expectations:
-  - bashkit compiles with `default-features = false` plus `jq`.
-  - Its timers fire when its future is polled from the Host's thread with the runtime's context entered.
-  - `RealBackend::rooted` accepts a drive root such as `C:\`.
-  - bashkit's dependency tree passes `cargo deny check` and `cargo audit` in `runvil` once `bzip2-1.0.6` is allowed. Any other license it needs is added only when it is permissive, and the pull request names it.
+- **Workshop's build and installers grow.** bashkit and its dependencies join every Workshop build, and its library joins every installer. The release library is about 18 MB on Windows.
+
+## What the build found
+
+The four things the plan could not check without building all hold:
+
+- bashkit 0.21.0 compiles with `default-features = false` plus `jq`, and its library needs no MSVC runtime DLL.
+- Its timers fire when its future is polled from the Host's thread with the runtime's context entered. A server test runs the shell through the Harness's loader on Workshop's own tokio runtime.
+- `RealBackend::rooted` accepts `C:\`. A test maps the drive's root on Windows.
+- bashkit's dependency tree passes `cargo deny check` and `cargo audit` in `runvil` once `bzip2-1.0.6` is allowed. No other license was needed.
+
+What the read-only stage is like to use, for the writing stage to know:
+
+- **Most refused writes fail one command.** A redirect to a file, `mkdir`, `rm`, `mv`, `cp`, `touch`, `ln`, and `chmod` print the reason and the script goes on.
+- **`tee` to a file and `sed -i` end the whole call.** bashkit treats their failed write as a failure of the script, so the call fails with the reason and the output before it is lost.
+- **What needs no file works.** A pipeline, a command substitution, a process substitution, a here-document, a here-string, and a redirect to `/dev/null`.
+- **On Windows, a redirect to `/dev/stdout` or `/dev/stderr` is refused as a write.** This is a bug in bashkit 0.21.0, in `normalize_dev_path` of `src/interpreter/mod.rs`: it rebuilds the path with the host's separator, so on Windows the path no longer matches the names bashkit answers itself, and the redirect reaches the file system. `>&2` works. Once the shell can write, such a redirect would write a file named `/dev/stderr` in the run, so the bug should be reported to bashkit before then.
+- **`mktemp` fails,** because the run has no `/tmp` unless its Host mounts one.
+- **A file near the 16 MiB ceiling can pass bashkit's own budget.** bashkit lets one command hold 32 MB of data, and `cmd < file` counts the file twice, so that form fails with bashkit's reason where `cmd file` reads it.
+- **`ls` of a path the Host refuses to read** prints `No such file or directory`, where `cat` prints the Host's reason.
 
 ## Out of scope
 
