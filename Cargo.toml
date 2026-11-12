@@ -6,12 +6,17 @@ members = ["crates/*"]
 edition = "2024"
 license = "BSL-1.0"
 
+[workspace.dependencies]
 # The Plugin SDK at contract 0.4, pinned to a commit. A Host loads this
 # Plugin only when its Harness speaks the same contract version.
-[workspace.dependencies.runvil-plugin-sdk]
-version = "0.4.0"
-git = "https://github.com/cppalliance/runvil-plugin-api"
-rev = "03a9fa37d2fe690d42ee0aa5c7a8289173e8e0f2"
+runvil-plugin-sdk = { version = "0.4.0", git = "https://github.com/cppalliance/runvil-plugin-api", rev = "03a9fa37d2fe690d42ee0aa5c7a8289173e8e0f2" }
+# Parses this workspace's sources for the type-size check; `full` is the
+# feature that parses items.
+syn = { version = "3", features = ["full"] }
+# `span-locations` makes a span parsed outside a proc macro report its line,
+# which the type-size check prints with every violation.
+proc-macro2 = { version = "1", features = ["span-locations"] }
+tempfile = "3"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
@@ -45,3 +50,7 @@ disallowed_macros = "deny"
 # Cherry-picked out of pedantic: it flags product names (Runvil, OpenAI) in
 # prose, which reads worse backticked than the lint is worth.
 doc_markdown = "allow"
+# Cherry-picked out of pedantic: its suggested rewrite for a collection is
+# `assert_eq!(x, [] as [T; 0])`, which has to spell out the element type and
+# needs `T: PartialEq + Debug`, so it cannot be applied to most call sites.
+assert_is_empty = "allow"

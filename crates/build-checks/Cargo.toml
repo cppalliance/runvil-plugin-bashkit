@@ -1,0 +1,17 @@
+[package]
+name = "build-checks"
+version = "0.0.0"
+description = "This repository's structural checks, run as tests"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+proc-macro2.workspace = true
+syn.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

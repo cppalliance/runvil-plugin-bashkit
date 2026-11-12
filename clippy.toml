@@ -1,7 +1,8 @@
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 
-# Size limits sit on functions. A file has no length limit.
+# Size limits sit on functions (here) and on types (the type-size check in
+# `crates/build-checks`). A file has no length limit.
 too-many-lines-threshold = 100
 too-many-arguments-threshold = 7
 

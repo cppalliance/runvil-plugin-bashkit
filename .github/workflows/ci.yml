@@ -31,8 +31,9 @@ jobs:
           CARGO_BUILD_WARNINGS: deny
         run: cargo clippy --locked --workspace --all-targets --all-features
 
-  # The Plugin ships as a dynamic library for each platform, so the tests
-  # and its release build run on all three.
+  # The Plugin ships as a dynamic library for each platform, so the tests,
+  # the structural checks among them, and its release build run on all
+  # three.
   test:
     strategy:
       fail-fast: false
@@ -72,5 +73,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
+      # Almost every item is private, so rustdoc checks their docs only
+      # with `--document-private-items`.
       - name: Docs
-        run: cargo doc --locked --workspace --no-deps --all-features
+        run: cargo doc --locked --workspace --no-deps --all-features --document-private-items
