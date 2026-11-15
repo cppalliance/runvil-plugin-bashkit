@@ -8,7 +8,7 @@ use std::task::{Context, Poll, Waker};
 
 use bashkit::FileSystem;
 use runvil_plugin_sdk::testing::Files;
-use runvil_plugin_sdk::{FileError, FileErrorKind, FileType, Stat};
+use runvil_plugin_sdk::{FileError, FileErrorKind, FileType, Stat, ToolError, ToolErrorKind};
 use serde_json::json;
 
 use super::{FileRequest, MAX_FILE_BYTES, READ_ONLY, RunFiles, host_path, metadata};
@@ -206,6 +206,39 @@ fn every_command_that_would_change_a_file_fails_with_the_one_reason() {
         assert!(
             text.starts_with("Exit code: 1\n") && text.contains(READ_ONLY),
             "{command}: {text}"
+        );
+    }
+    assert_eq!(run(&pack, "cat /notes/a.md"), answer(0, "one\ntwo\n"));
+}
+
+#[test]
+fn sed_in_place_fails_its_own_command_and_tee_to_a_file_ends_the_call() {
+    let loaded = loaded();
+    let pack = over(&loaded, files());
+    // `sed -i` reports its failed write as its own exit code, and the
+    // script goes on.
+    assert_eq!(
+        run(&pack, "sed -i 's/one/uno/' /notes/a.md; echo \"exit $?\""),
+        answer(
+            0,
+            &format!(
+                "exit 4\nsed: /notes/a.md: cannot write '/notes/a.md': io error: {READ_ONLY}\n"
+            )
+        )
+    );
+    // bashkit treats the failed write of `tee` as a failure of the script,
+    // so the call fails, and the output before the write is lost.
+    for command in [
+        "echo before; echo hi | tee /notes/new.md; echo after",
+        "echo before; echo hi | tee -a /notes/a.md; echo after",
+    ] {
+        assert_eq!(
+            shell(&pack, &json!({ "command": command })),
+            Err(ToolError::new(
+                ToolErrorKind::Backend,
+                format!("Shell: the shell did not finish the command: io error: {READ_ONLY}")
+            )),
+            "{command}"
         );
     }
     assert_eq!(run(&pack, "cat /notes/a.md"), answer(0, "one\ntwo\n"));

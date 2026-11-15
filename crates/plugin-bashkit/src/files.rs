@@ -10,7 +10,7 @@
 //!
 //! The shell cannot change files in this build. Every operation that
 //! would fails with [`READ_ONLY`], and nothing else is done about it:
-//! writing comes with the contract's functions for it.
+//! writing comes with file methods of the SDK that return futures.
 
 use std::io;
 use std::path::{Path, PathBuf};

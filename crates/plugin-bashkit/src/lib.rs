@@ -73,11 +73,11 @@
 //! The shell cannot change files in this build, because contract 0.4 has
 //! no function that does. A command that writes, deletes, or renames a
 //! file fails with one fixed reason, `READ_ONLY` in `files.rs`, and the
-//! script goes on. A few commands end the whole call instead, with that
-//! reason in the failure: `tee` to a file and `sed -i` are two. Nothing
-//! else is done about a failed write here: writing comes with the
-//! contract's functions for it, and each refusal then becomes a write
-//! through the Host.
+//! script goes on. `sed -i` is one of them: it exits with code 4. A few
+//! commands end the whole call instead, with that reason in the failure,
+//! and `tee` to a file is one. Nothing else is done about a failed write
+//! here: writing comes with file methods of the SDK that return futures,
+//! and each refusal then becomes a write through the Host.
 //!
 //! # Where a command runs
 //!
