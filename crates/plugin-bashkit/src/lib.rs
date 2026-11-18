@@ -41,11 +41,18 @@
 //! Each call builds a new shell, which starts at the root of the run's
 //! files, and drops it when the call ends. A working directory, a
 //! variable, or a function lasts for that call alone, so a call finds
-//! nothing that an earlier call left in a shell. Calls that are in
-//! flight together each have a shell, and none waits for another.
+//! nothing that an earlier call left in a shell. It finds the run's files
+//! as the earlier calls left them.
+//!
+//! The tool says that its calls change files. So the Host runs the
+//! `Shell` calls of one reply one after another, in the order the reply
+//! lists them. Calls of different replies, such as the calls of two
+//! tasks, can be in flight together: each has a shell, and none waits
+//! for another.
 //!
 //! A call the Host abandons, as it does on a stop or a cancel, stops its
-//! script where it is, and its shell goes with it.
+//! script where it is, and its shell goes with it. A change that went to
+//! the Host before that has happened.
 //!
 //! Every command is built into bashkit: the shell starts no process, and
 //! it has no network. A command is stopped after 30 seconds, or after the
@@ -56,42 +63,70 @@
 //! # Where the file access goes
 //!
 //! The shell's files are the files of its run, and it starts at their
-//! root. Every read goes through the call's
+//! root. Every file operation goes through the call's
 //! [`ToolCall`](runvil_plugin_sdk::ToolCall), never the disk directly, so
-//! the Host answers each one under the run's policy. A read that fails
-//! fails its command, which tells the script why as a shell would, and a
-//! read the policy denies shows the policy's own reason. The shell reads
-//! at most 16 MiB of one file.
+//! the Host answers each one under the run's policy. An operation that
+//! fails fails its command, which tells the script why as a shell would,
+//! and one the policy denies shows the policy's own reason. `sed -i`
+//! reports a failed write as its own exit code, 4. A few commands end the
+//! whole call instead, with the reason in the failure, and `tee` is one.
 //!
-//! The contract reports what a path names and how long a file is. So a
-//! listing shows every entry with no write bit and a time at the start of
-//! 1970, and a link shows as a link whose target cannot be read.
+//! The shell reads the run's files, and it changes them with the six
+//! changes of the contract: a write, an append, a new directory, a
+//! removal, a move, and a copy. It reads at most 16 MiB of one file and
+//! writes at most 16 MiB at a time, and a read or a write over that fails
+//! with a sentence that names the limit. The Host makes each absent
+//! directory on the way to a file it writes, so a redirect to
+//! `new/dir/file` makes `new/dir`, where a real shell fails.
 //!
-//! The shell cannot change files in this build: `RunFiles` passes no
-//! change on to the Host. A command that writes, deletes, or renames a
-//! file fails with one fixed reason, `READ_ONLY` in `files.rs`, and the
-//! script goes on. `sed -i` is one of them: it exits with code 4. A few
-//! commands end the whole call instead, with that reason in the failure,
-//! and `tee` to a file is one. Nothing else is done about a failed write
-//! here.
+//! The contract reports what a path names and how long a file is, and it
+//! has no function for a mode, a time, a link, or a named pipe. So the
+//! shell answers those itself, and it keeps no state to do so:
+//!
+//! - A file has mode 644 and a directory has mode 755. `chmod` succeeds
+//!   when it asks for the mode a path has, and fails with `FIXED_MODE` in
+//!   `files.rs` otherwise. No file has an execute bit, so `./script.sh`
+//!   fails, and `bash script.sh` runs the script.
+//! - Every time is the start of 1970. `touch` makes a file that is
+//!   absent, and the time it sets is not kept.
+//! - A link shows as a link whose target cannot be read, and `ln` and
+//!   `mkfifo` fail.
+//!
+//! A write to a path under `/dev/` fails with `NO_DEVICE` in `files.rs`
+//! and never goes to the Host. bashkit answers a redirect to `/dev/null`,
+//! `/dev/stdout`, `/dev/stderr`, or `/dev/fd/N` itself. On Windows it
+//! knows only `/dev/null` for what it is, and it sends a redirect to one
+//! of the others to its file system
+//! (<https://github.com/everruns/bashkit/issues/2933>). The refusal keeps
+//! such a redirect from making a file of that name among the run's files.
+//! It holds on every platform and for every name under `/dev/`. A read
+//! under `/dev/` is a read of the run's files like any other, so
+//! `cat /dev/null` fails unless the run has that file.
+//!
+//! `mktemp` makes its file under `/tmp` among the run's files, and it
+//! makes that directory when it is absent.
 //!
 //! # Where a command runs
 //!
 //! bash runs inside the steps of its tool call, on the Host's thread. A
 //! step polls the script, which runs until it ends, waits on a timer, or
-//! waits on a read. A read is a request to the Host: the step ends with
-//! it, and the call's next step brings the answer. The Host takes one
-//! request of a call at a time, so reads that wait together, as in a
-//! pipeline and in `&` jobs, go to the Host one with each step, in the
-//! order the script made them. A read that ends in the step that made
-//! it, as one of a path longer than the contract allows does, lets that
-//! step poll the script again, `POLL_CAP` times at most (`session.rs`).
+//! waits on a file operation. An operation is a request to the Host: the
+//! step ends with it, and the call's next step brings the answer. The
+//! Host takes one request of a call at a time, so operations that wait
+//! together, as in a pipeline and in `&` jobs, go to the Host one with
+//! each step, in the order the script asked for them. An operation that
+//! ends in the step that asked for it, as one on a path longer than the
+//! contract allows does, lets that step poll the script again, `POLL_CAP`
+//! times at most (`session.rs`).
 //!
-//! A read that its command stopped waiting for is dropped, which happens
-//! at the `timeout` builtin, at `kill`, and in a pipeline that failed. A
-//! dropped read that has not gone to the Host never goes. The reads that
-//! are still in progress when a script ends are awaited before the call
-//! goes on, so a call ends with no read of its own in progress.
+//! An operation that its command stopped waiting for is dropped, which
+//! happens at the `timeout` builtin, at `kill`, and in a pipeline that
+//! failed. A dropped operation that has not gone to the Host never goes,
+//! so a change it asked for does not happen. bashkit lets go of a killed
+//! job when it next polls its jobs, and until then an operation of that
+//! job can still go to the Host. The operations that are still in
+//! progress when a script ends are awaited before the call goes on, so a
+//! call ends with no operation of its own in progress.
 //!
 //! bashkit never pauses during other work, so a step lasts as long as
 //! that work does, and while a command waits on a `sleep` the Host steps
@@ -108,10 +143,11 @@
 //!   another language's interpreter are off.
 //! - The shell's whole file system is `RunFiles`, with no layer of
 //!   bashkit's over it: its root layout and its link following are off.
-//!   Every read reaches files through the running call's `ToolCall`, and
-//!   nothing changes a file.
-//! - A script's reads that are in progress sit in the frame of its
-//!   driver, which drops a read that nothing waits for, and returns only
+//!   Every read and every change reaches the run's files through the
+//!   running call's `ToolCall`, and `RunFiles` keeps no file, no mode,
+//!   and no time of its own.
+//! - A script's file operations that are in progress sit in the frame of
+//!   its driver, which drops one that nothing waits for, and returns only
 //!   when none is in progress.
 //! - The Plugin instance owns a tokio runtime with one worker thread,
 //!   whose only work is bashkit's timers. Dropping the instance drops the

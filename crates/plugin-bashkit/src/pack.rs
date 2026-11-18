@@ -45,7 +45,11 @@ impl Pack for BashPack {
                 definition.description.clone(),
                 definition.parameters.clone(),
             )
-            .wire_name(definition.wire_name.clone()),
+            .wire_name(definition.wire_name.clone())
+            // A script may change the run's files. With the flag, the
+            // Host runs the calls of the tool that one reply asks for one
+            // after another, in the order the reply lists them.
+            .changes_files(),
         ]
     }
 
@@ -90,6 +94,13 @@ mod tests {
             .map(|tool| (tool.name.as_str(), tool.wire_name.as_deref()))
             .collect();
         assert_eq!(names, [("shell", Some("Shell"))]);
+    }
+
+    #[test]
+    fn the_tool_says_that_its_calls_change_files() {
+        let loaded = loaded();
+        let pack = loaded.new_pack(PACK).expect("the Pack instance is made");
+        assert!(pack.tools().iter().all(|tool| tool.changes_files));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 {
   "wire_name": "Shell",
-  "description": "Executes a given command in a bash shell with an optional time limit.\n\nThe shell is a bash interpreter that runs inside the run. Its commands are built in: there are no external programs such as git, npm, or docker, and no network.\n\n- Each call starts a new shell at the root of the run's files. A `cd`, a variable, or a function lasts for that call alone.\n- Chain dependent commands with `&&` in one call.\n- The shell reads the run's files. It cannot change them yet: a command that writes, deletes, or renames a file fails.\n- Output past {output_cap} characters is cut in the middle: the result keeps the start and the end and says so.",
+  "description": "Executes a given command in a bash shell with an optional time limit.\n\nThe shell is a bash interpreter that runs inside the run. Its commands are built in: there are no external programs such as git, npm, or docker, and no network.\n\n- Each call starts a new shell at the root of the run's files. A `cd`, a variable, or a function lasts for that call alone.\n- Chain dependent commands with `&&` in one call.\n- The Shell calls of one reply run one after another, in the order listed.\n- The shell reads and changes the run's files. No file has an execute bit: run a script with `bash script.sh`.\n- Output past {output_cap} characters is cut in the middle: the result keeps the start and the end and says so.",
   "parameters": {
     "type": "object",
     "properties": {

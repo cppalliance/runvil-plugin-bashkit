@@ -71,8 +71,9 @@ impl Invocation {
         })
     }
 
-    /// Runs the command in `shell` for `call`, which performs the reads
-    /// of the run's files, and returns what the call answers.
+    /// Runs the command in `shell` for `call`, which performs the
+    /// command's operations on the run's files, and returns what the call
+    /// answers.
     async fn run(&self, shell: &mut Shell, call: ToolCall<'_>) -> Result<ToolOutput, ToolError> {
         if let Some(directory) = &self.working_directory {
             let change = format!("cd -- {}", quoted(directory));

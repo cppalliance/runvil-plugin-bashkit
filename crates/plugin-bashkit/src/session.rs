@@ -1,5 +1,6 @@
 //! One call's shell: the [`Shell`] a call builds for itself, and the
-//! driver that polls a script in it and performs the script's reads.
+//! driver that polls a script in it and performs the script's file
+//! operations.
 
 use std::future::{Future, poll_fn};
 use std::pin::pin;
@@ -16,11 +17,12 @@ use crate::files::{FileRequest, RunFiles};
 use crate::shell::TIMEOUT_MS;
 
 /// The most times one step of a call polls its script. A step polls the
-/// script again when a read of the script's ended since the last poll. A
-/// step brings the Host's answer to one read at most, so a script comes
-/// this far only with reads that end before they reach the Host, as a
-/// read of a path longer than the contract allows does. The step then
-/// ends, so the Host can abandon the call between two steps.
+/// script again when a file operation of the script's ended since the
+/// last poll. A step brings the Host's answer to one operation at most,
+/// so a script comes this far only with operations that end before they
+/// reach the Host, as one on a path longer than the contract allows
+/// does. The step then ends, so the Host can abandon the call between two
+/// steps.
 const POLL_CAP: usize = 32;
 
 /// A bash shell that lasts for one call. Its files are the run's, and it
@@ -30,8 +32,8 @@ const POLL_CAP: usize = 32;
 /// functions a script leaves go with the shell when the call ends.
 pub(crate) struct Shell {
     bash: Bash,
-    /// The reads the shell's file system waits on, which the shell's call
-    /// performs.
+    /// The file operations the shell's file system waits on, which the
+    /// shell's call performs.
     requests: UnboundedReceiver<FileRequest>,
     /// The Plugin's runtime, which runs the timers behind the shell's time
     /// limit and its `sleep`.
@@ -67,7 +69,7 @@ impl Shell {
     }
 
     /// Runs `script` to its end for `call`, which performs the script's
-    /// reads, and stops it after `limit`.
+    /// file operations, and stops it after `limit`.
     ///
     /// # Errors
     /// Returns bashkit's error when the script does not parse, runs past
@@ -85,18 +87,18 @@ impl Shell {
 }
 
 /// Polls `script`, a script that bashkit runs, to its end, and performs
-/// its reads through `call`. Each poll of the script runs inside the
-/// context of `timers`, because bashkit starts a tokio timer for its time
-/// limit and for each `sleep`, and a timer needs a runtime.
+/// its file operations through `call`. Each poll of the script runs
+/// inside the context of `timers`, because bashkit starts a tokio timer
+/// for its time limit and for each `sleep`, and a timer needs a runtime.
 ///
-/// A read the script makes arrives in `requests` and becomes an operation
-/// in progress: the future of [`FileRequest::serve`], which this frame
-/// keeps. A step of the call brings the Host's answer to one operation at
-/// most. So a step first polls the operations in progress, which passes
-/// that answer on, and then polls the script, which goes on with it. An
-/// operation ends when it has replied, and when its script stopped
-/// waiting for it, as bashkit does at its `timeout` builtin, at `kill`,
-/// and in a pipeline that failed.
+/// A file operation the script asks for arrives in `requests` and becomes
+/// an operation in progress: the future of [`FileRequest::serve`], which
+/// this frame keeps. A step of the call brings the Host's answer to one
+/// operation at most. So a step first polls the operations in progress,
+/// which passes that answer on, and then polls the script, which goes on
+/// with it. An operation ends when it has replied, and when its script
+/// stopped waiting for it, as bashkit does at its `timeout` builtin, at
+/// `kill`, and in a pipeline that failed.
 ///
 /// A step polls the script again only after an operation ended, and
 /// [`POLL_CAP`] times at most. Then the step ends, and a later step goes
@@ -105,7 +107,8 @@ impl Shell {
 /// When the script has ended, the operations still in progress are
 /// awaited before its output is returned. So this function returns with
 /// no operation in progress: each one has replied, or nothing waited for
-/// it.
+/// it. A change the script asked for is settled by then: the Host has
+/// answered it, or it never went to the Host.
 async fn drive<F: Future>(
     timers: &Handle,
     requests: &mut UnboundedReceiver<FileRequest>,

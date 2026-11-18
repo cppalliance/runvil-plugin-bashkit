@@ -1,6 +1,7 @@
 //! Each call's shell through the Plugin's entry point: calls in flight
 //! together each have one, a call the Host abandons leaves nothing for
-//! the next, and the steps of a call take its script's reads to the Host.
+//! the next, and the steps of a call take its script's file operations to
+//! the Host.
 
 use std::thread;
 use std::time::Duration;
@@ -17,7 +18,7 @@ fn args(command: &str) -> String {
     json!({ "command": command }).to_string()
 }
 
-/// The tree the scripts below read.
+/// The tree the scripts below read and change.
 fn files() -> Files {
     Files::new()
         .file("/notes/a.md", "one\ntwo\n")
@@ -29,6 +30,15 @@ fn files() -> Files {
 /// `output`.
 fn exited(code: i32, output: &str) -> ToolOutput {
     ToolOutput::untrusted(answer(code, output))
+}
+
+/// The failure of a call whose command was stopped at a time limit of
+/// 50 ms.
+fn stopped() -> ToolError {
+    ToolError::new(
+        ToolErrorKind::Backend,
+        "Shell: the command was stopped at its time limit of 50 ms, before it finished.",
+    )
 }
 
 #[test]
@@ -153,18 +163,109 @@ fn a_script_that_ended_waits_for_its_reads_in_progress() {
     // stops the script, with the two other reads in progress.
     thread::sleep(Duration::from_millis(300));
     let (pending, result) = stepped(&mut call);
-    assert_eq!(
-        result,
-        Err(ToolError::new(
-            ToolErrorKind::Backend,
-            "Shell: the command was stopped at its time limit of 50 ms, before it finished."
-        ))
-    );
+    assert_eq!(result, Err(stopped()));
     // A limit that came late lets the script sleep on, which only adds
     // steps.
     assert!(
         pending >= 2,
         "the call ends after a step for each of the two reads, and {pending} steps ended pending"
+    );
+}
+
+#[test]
+fn a_change_that_nothing_waits_for_never_goes_to_the_host() {
+    let loaded = loaded();
+    let pack = over(&loaded, files());
+    // The job asks for its write and is killed in the one poll of the
+    // script, so nothing waits for the write when the call takes it up.
+    let mut call = pack.start(
+        "shell",
+        &args("echo hi > /notes/new.md & kill %1; wait %1; echo \"exit $?\""),
+    );
+    assert_eq!(call.step(), Ok(Some(Ok(exited(0, "exit 143\n")))));
+    assert_eq!(*pack.files(), files());
+}
+
+#[test]
+fn a_change_in_progress_that_nothing_waits_for_any_more_does_not_happen() {
+    let loaded = loaded();
+    let pack = over(&loaded, files());
+    // The write of the third job waits for its turn behind two reads. The
+    // script kills that job once the first read is answered, which drops
+    // the write before it goes to the Host.
+    let mut call = pack.start(
+        "shell",
+        &args(
+            "cat /notes/a.md & first=$!; cat /notes/b.md & echo hi > /notes/new.md & \
+             wait $first; kill %3; wait; echo done",
+        ),
+    );
+    assert_eq!(
+        stepped(&mut call),
+        (2, Ok(exited(0, "one\ntwo\nthree\ndone\n")))
+    );
+    assert_eq!(*pack.files(), files());
+}
+
+#[test]
+fn a_change_of_a_job_killed_in_the_step_that_sends_it_still_happens() {
+    let loaded = loaded();
+    let pack = over(&loaded, files());
+    // The write of the second job is next in line when the script kills
+    // that job. bashkit lets go of a killed job when it next polls its
+    // jobs, which it does in a later step. Until then the job still waits
+    // for its write, so the write goes to the Host at the end of the step.
+    let mut call = pack.start(
+        "shell",
+        &args(
+            "cat /notes/a.md & first=$!; echo hi > /notes/new.md & \
+             wait $first; kill %2; wait; echo done",
+        ),
+    );
+    assert_eq!(stepped(&mut call), (2, Ok(exited(0, "one\ntwo\ndone\n"))));
+    assert_eq!(*pack.files(), files().file("/notes/new.md", "hi\n"));
+}
+
+#[test]
+fn a_change_that_went_to_the_host_has_happened_when_its_call_is_abandoned() {
+    let loaded = loaded();
+    let pack = over(&loaded, files());
+    let mut call = pack.start("shell", &args("echo hi > /notes/new.md; sleep 20"));
+    assert_eq!(call.step(), Ok(None), "the Host has the call's write");
+    drop(call);
+    assert_eq!(*pack.files(), files().file("/notes/new.md", "hi\n"));
+}
+
+#[test]
+fn a_script_that_ended_waits_for_its_changes_in_progress() {
+    let loaded = loaded();
+    let pack = over(&loaded, files());
+    // Three jobs ask for a write each, and the script sleeps past its
+    // time limit. bashkit stops the script at the limit and keeps its
+    // jobs, which still wait for their writes.
+    let mut call = pack.start(
+        "shell",
+        &json!({
+            "command": "echo x > /notes/x.md & echo y > /notes/y.md & echo z > /notes/z.md & \
+                        sleep 20",
+            "block_until_ms": 50,
+        })
+        .to_string(),
+    );
+    assert_eq!(call.step(), Ok(None), "the Host has the first write");
+    // The limit passes here. The next step brings the first answer and
+    // stops the script, with the two other writes in progress.
+    thread::sleep(Duration::from_millis(300));
+    let (_, result) = stepped(&mut call);
+    assert_eq!(result, Err(stopped()));
+    // A limit that came late lets the script sleep on, and the two writes
+    // happen while it sleeps.
+    assert_eq!(
+        *pack.files(),
+        files()
+            .file("/notes/x.md", "x\n")
+            .file("/notes/y.md", "y\n")
+            .file("/notes/z.md", "z\n")
     );
 }
 
