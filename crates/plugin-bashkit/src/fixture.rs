@@ -30,14 +30,22 @@ pub(crate) fn shell(pack: &PackRun<'_>, args: &Value) -> Result<ToolOutput, Tool
         .expect("the call follows the contract")
 }
 
+/// Steps `call`, which a test started, to its end. Returns how many of
+/// its steps ended pending, and how the call ended.
+pub(crate) fn stepped(call: &mut Call<'_>) -> (usize, Result<ToolOutput, ToolError>) {
+    let mut pending = 0;
+    loop {
+        match call.step().expect("the step follows the contract") {
+            Some(result) => return (pending, result),
+            None => pending += 1,
+        }
+    }
+}
+
 /// Steps `call`, which a test started, to its end, and returns the output
 /// of the command it ran.
 pub(crate) fn finish(call: &mut Call<'_>) -> ToolOutput {
-    loop {
-        if let Some(result) = call.step().expect("the step follows the contract") {
-            return result.expect("the command finishes");
-        }
-    }
+    stepped(call).1.expect("the command finishes")
 }
 
 /// The text a finished `command` answers on `pack`.

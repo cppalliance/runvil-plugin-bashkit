@@ -1,19 +1,21 @@
 //! [`RunFiles`], the shell's file system: the files of the run, read
 //! through the Host, and nothing else.
 //!
-//! bashkit keeps its file system for as long as the shell lives, and a
-//! tool call lends its files only while one of its steps runs. So
-//! `RunFiles` holds no call. Each read becomes a [`FileRequest`] that
-//! waits in a channel, and the call that is running the script takes it,
-//! performs it with its [`ToolCall`], and replies. A read therefore goes
+//! bashkit holds its file system as a value that borrows nothing, and a
+//! [`ToolCall`] borrows from its call. So `RunFiles` holds no call. Each
+//! read becomes a [`FileRequest`] that waits in a channel. The call that
+//! is running the script takes it, awaits the file method of its
+//! [`ToolCall`] that performs it, and replies. A read therefore goes
 //! through the Host under the run's policy, like any other tool's.
 //!
 //! The shell cannot change files in this build. Every operation that
-//! would fails with [`READ_ONLY`], and nothing else is done about it:
-//! writing comes with file methods of the SDK that return futures.
+//! would fails with [`READ_ONLY`], and nothing else is done about it.
 
+use std::future::{Future, poll_fn};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::pin::pin;
+use std::task::Poll;
 use std::time::UNIX_EPOCH;
 
 use bashkit::{FileSystem, FileSystemExt, Metadata, async_trait, normalize_path};
@@ -44,23 +46,47 @@ pub(crate) enum FileRequest {
 }
 
 impl FileRequest {
-    /// Performs the request through `call`, the tool call whose step is
-    /// running, and replies. A script that was stopped while it waited no
-    /// longer listens, and its answer is dropped.
-    pub(crate) fn serve(self, call: ToolCall<'_>) {
+    /// Performs the request through `call`, the tool call that runs the
+    /// script, and replies. It awaits a file method of the SDK, whose
+    /// answer a later step of the call brings.
+    ///
+    /// A script that stopped waiting for the answer has dropped its end
+    /// of the reply channel. The future then ends at its next poll and
+    /// replies nothing, which drops the request: one that has not gone to
+    /// the Host never goes, and the answer to one that has is discarded.
+    pub(crate) async fn serve(self, call: ToolCall<'_>) {
         match self {
-            FileRequest::Stat(path, reply) => drop(reply.send(call.stat(&path))),
-            FileRequest::List(path, reply) => drop(reply.send(call.list(&path))),
-            FileRequest::Read(path, reply) => drop(reply.send(read(call, &path))),
+            FileRequest::Stat(path, reply) => relay(call.stat(&path), reply).await,
+            FileRequest::List(path, reply) => relay(call.list(&path), reply).await,
+            FileRequest::Read(path, reply) => relay(read(call, &path), reply).await,
         }
+    }
+}
+
+/// Awaits `operation` and sends what it resolves to through `reply`.
+/// Each poll first asks whether the other end of `reply` is gone, and
+/// when it is, ends with `operation` dropped and nothing sent.
+async fn relay<T>(operation: impl Future<Output = Answer<T>>, reply: oneshot::Sender<Answer<T>>) {
+    let mut operation = pin!(operation);
+    let answer = poll_fn(|cx| {
+        if reply.is_closed() {
+            return Poll::Ready(None);
+        }
+        operation.as_mut().poll(cx).map(Some)
+    })
+    .await;
+    if let Some(answer) = answer {
+        // The send fails only when the other end is gone, and then
+        // nothing waits for the answer.
+        drop(reply.send(answer));
     }
 }
 
 /// The contents of the file at `path`, or a failure for a file over
 /// [`MAX_FILE_BYTES`]. It asks for one byte more than the ceiling, so one
 /// read both bounds what the Host holds and shows a file that is over.
-fn read(call: ToolCall<'_>, path: &str) -> Answer<Vec<u8>> {
-    let bytes = call.read_range(path, 0, MAX_FILE_BYTES + 1)?;
+async fn read(call: ToolCall<'_>, path: &str) -> Answer<Vec<u8>> {
+    let bytes = call.read_range(path, 0, MAX_FILE_BYTES + 1).await?;
     if u64::try_from(bytes.len()).is_ok_and(|len| len <= MAX_FILE_BYTES) {
         return Ok(bytes);
     }

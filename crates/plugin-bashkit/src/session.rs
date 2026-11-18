@@ -4,21 +4,24 @@
 use std::future::{Future, poll_fn};
 use std::pin::pin;
 use std::sync::Arc;
-use std::task::Poll;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use bashkit::{Bash, ExecOptions, ExecResult, ExecutionLimits};
-use runvil_plugin_sdk::ToolCall;
+use runvil_plugin_sdk::{BoxFuture, ToolCall};
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::files::{FileRequest, RunFiles};
 use crate::shell::TIMEOUT_MS;
 
-/// The most file requests one step of a call serves. A script that reads
-/// many files then ends its step, as a search of the std Plugin's Grep
-/// does every 32 files, so the Host can abandon it between two steps.
-const SLICE: usize = 32;
+/// The most times one step of a call polls its script. A step polls the
+/// script again when a read of the script's ended since the last poll. A
+/// step brings the Host's answer to one read at most, so a script comes
+/// this far only with reads that end before they reach the Host, as a
+/// read of a path longer than the contract allows does. The step then
+/// ends, so the Host can abandon the call between two steps.
+const POLL_CAP: usize = 32;
 
 /// A bash shell that lasts for one call. Its files are the run's, and it
 /// starts at their root. A call that names a working directory runs two
@@ -81,14 +84,28 @@ impl Shell {
     }
 }
 
-/// Polls `script`, a script that bashkit runs, to its end. Each poll runs
-/// inside the context of `timers`, because bashkit starts a tokio timer
-/// for its time limit and for each `sleep`, and a timer needs a runtime.
+/// Polls `script`, a script that bashkit runs, to its end, and performs
+/// its reads through `call`. Each poll of the script runs inside the
+/// context of `timers`, because bashkit starts a tokio timer for its time
+/// limit and for each `sleep`, and a timer needs a runtime.
 ///
-/// A poll that comes back unfinished left reads in `requests`, or waits
-/// on a timer. `call` performs the reads and the script is polled again
-/// at once, until [`SLICE`] of them are done in this step. With no read
-/// to perform, only a timer can move the script on, so the step ends.
+/// A read the script makes arrives in `requests` and becomes an operation
+/// in progress: the future of [`FileRequest::serve`], which this frame
+/// keeps. A step of the call brings the Host's answer to one operation at
+/// most. So a step first polls the operations in progress, which passes
+/// that answer on, and then polls the script, which goes on with it. An
+/// operation ends when it has replied, and when its script stopped
+/// waiting for it, as bashkit does at its `timeout` builtin, at `kill`,
+/// and in a pipeline that failed.
+///
+/// A step polls the script again only after an operation ended, and
+/// [`POLL_CAP`] times at most. Then the step ends, and a later step goes
+/// on: it brings the Host's next answer, or finds a timer that fired.
+///
+/// When the script has ended, the operations still in progress are
+/// awaited before its output is returned. So this function returns with
+/// no operation in progress: each one has replied, or nothing waited for
+/// it.
 async fn drive<F: Future>(
     timers: &Handle,
     requests: &mut UnboundedReceiver<FileRequest>,
@@ -96,28 +113,46 @@ async fn drive<F: Future>(
     script: F,
 ) -> F::Output {
     let mut script = pin!(script);
-    let mut served = 0;
-    poll_fn(|cx| {
+    let mut operations: Vec<BoxFuture<'_, ()>> = Vec::new();
+    let output = poll_fn(|cx| {
+        let mut polls = 0;
         loop {
+            let ended = advance(&mut operations, cx);
+            if polls == POLL_CAP || (polls > 0 && ended == 0) {
+                return Poll::Pending;
+            }
+            polls += 1;
             let polled = {
                 let _context = timers.enter();
                 script.as_mut().poll(cx)
             };
+            while let Ok(request) = requests.try_recv() {
+                operations.push(Box::pin(request.serve(call)));
+            }
             if polled.is_ready() {
                 return polled;
             }
-            let before = served;
-            while let Ok(request) = requests.try_recv() {
-                request.serve(call);
-                served += 1;
-            }
-            if served == before || served >= SLICE {
-                served = 0;
-                return Poll::Pending;
-            }
         }
     })
-    .await
+    .await;
+    poll_fn(|cx| {
+        advance(&mut operations, cx);
+        if operations.is_empty() {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    })
+    .await;
+    output
+}
+
+/// Polls each of `operations` once, drops the ones that ended, and
+/// returns how many did.
+fn advance(operations: &mut Vec<BoxFuture<'_, ()>>, cx: &mut Context<'_>) -> usize {
+    let before = operations.len();
+    operations.retain_mut(|operation| operation.as_mut().poll(cx).is_pending());
+    before - operations.len()
 }
 
 #[cfg(test)]

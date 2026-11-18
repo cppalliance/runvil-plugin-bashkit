@@ -67,23 +67,35 @@
 //! listing shows every entry with no write bit and a time at the start of
 //! 1970, and a link shows as a link whose target cannot be read.
 //!
-//! The shell cannot change files in this build, because contract 0.4 has
-//! no function that does. A command that writes, deletes, or renames a
+//! The shell cannot change files in this build: `RunFiles` passes no
+//! change on to the Host. A command that writes, deletes, or renames a
 //! file fails with one fixed reason, `READ_ONLY` in `files.rs`, and the
 //! script goes on. `sed -i` is one of them: it exits with code 4. A few
 //! commands end the whole call instead, with that reason in the failure,
 //! and `tee` to a file is one. Nothing else is done about a failed write
-//! here: writing comes with file methods of the SDK that return futures,
-//! and each refusal then becomes a write through the Host.
+//! here.
 //!
 //! # Where a command runs
 //!
 //! bash runs inside the steps of its tool call, on the Host's thread. A
-//! step runs the script until it ends, waits on a timer, or has made 32
-//! reads, and each read is answered at once through the step's file
-//! functions. bashkit never pauses during other work, so a step lasts as
-//! long as that work does, and while a command waits on a `sleep` the
-//! Host steps the call with nothing to do.
+//! step polls the script, which runs until it ends, waits on a timer, or
+//! waits on a read. A read is a request to the Host: the step ends with
+//! it, and the call's next step brings the answer. The Host takes one
+//! request of a call at a time, so reads that wait together, as in a
+//! pipeline and in `&` jobs, go to the Host one with each step, in the
+//! order the script made them. A read that ends in the step that made
+//! it, as one of a path longer than the contract allows does, lets that
+//! step poll the script again, `POLL_CAP` times at most (`session.rs`).
+//!
+//! A read that its command stopped waiting for is dropped, which happens
+//! at the `timeout` builtin, at `kill`, and in a pipeline that failed. A
+//! dropped read that has not gone to the Host never goes. The reads that
+//! are still in progress when a script ends are awaited before the call
+//! goes on, so a call ends with no read of its own in progress.
+//!
+//! bashkit never pauses during other work, so a step lasts as long as
+//! that work does, and while a command waits on a `sleep` the Host steps
+//! the call with nothing to do.
 //!
 //! ## Invariants
 //!
@@ -98,6 +110,9 @@
 //!   bashkit's over it: its root layout and its link following are off.
 //!   Every read reaches files through the running call's `ToolCall`, and
 //!   nothing changes a file.
+//! - A script's reads that are in progress sit in the frame of its
+//!   driver, which drops a read that nothing waits for, and returns only
+//!   when none is in progress.
 //! - The Plugin instance owns a tokio runtime with one worker thread,
 //!   whose only work is bashkit's timers. Dropping the instance drops the
 //!   runtime, which joins that thread, so an unload leaves no thread

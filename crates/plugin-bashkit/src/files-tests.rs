@@ -12,7 +12,7 @@ use runvil_plugin_sdk::{FileError, FileErrorKind, FileType, Stat, ToolError, Too
 use serde_json::json;
 
 use super::{FileRequest, MAX_FILE_BYTES, READ_ONLY, RunFiles, host_path, metadata};
-use crate::fixture::{answer, loaded, over, run, shell};
+use crate::fixture::{answer, loaded, over, run, shell, stepped};
 
 /// The tree most tests below read.
 fn files() -> Files {
@@ -275,7 +275,7 @@ fn a_file_at_the_ceiling_is_read_and_one_byte_more_is_refused() {
 }
 
 #[test]
-fn a_script_that_reads_many_files_ends_its_step_between_them() {
+fn a_script_that_reads_many_files_ends_a_step_at_each_read() {
     let mut many = Files::new();
     for index in 0..40 {
         many = many.file(&format!("/many/f{index:02}"), format!("{index}\n"));
@@ -283,18 +283,15 @@ fn a_script_that_reads_many_files_ends_its_step_between_them() {
     let loaded = loaded();
     let pack = over(&loaded, many);
     let mut call = pack.start("shell", &json!({ "command": "cat /many/*" }).to_string());
-    let mut pending = 0;
-    let output = loop {
-        match call.step().expect("the step follows the contract") {
-            Some(result) => break result.expect("the command finishes"),
-            None => pending += 1,
-        }
-    };
+    let (pending, result) = stepped(&mut call);
     let numbers: Vec<String> = (0..40).map(|index| index.to_string()).collect();
-    assert_eq!(output.text(), answer(0, &(numbers.join("\n") + "\n")));
+    assert_eq!(
+        result.expect("the command finishes").text(),
+        answer(0, &(numbers.join("\n") + "\n"))
+    );
     assert!(
-        pending >= 1,
-        "forty reads are more than one step serves, so the call took more than one"
+        pending >= 40,
+        "each of the forty reads ends a step, and {pending} steps ended pending"
     );
 }
 
