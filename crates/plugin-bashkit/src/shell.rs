@@ -1,6 +1,5 @@
 //! The `shell` tool, which the model calls `Shell`: a call's arguments,
-//! the command it runs in the run's shell session, and the text it
-//! answers.
+//! the command it runs in a shell of its own, and the text it answers.
 
 use std::borrow::Cow;
 use std::time::Duration;
@@ -9,7 +8,7 @@ use bashkit::{ExecResult, LimitExceeded};
 use runvil_plugin_sdk::{ToolCall, ToolError, ToolErrorKind, ToolOutput};
 use serde::Deserialize;
 
-use crate::session::{self, Session, Shell};
+use crate::session::Shell;
 
 /// The longest a command may run, in milliseconds, and the limit a call
 /// gets when it names none.
@@ -94,9 +93,7 @@ impl Invocation {
             // A model that reads a bare failure runs the command again, so
             // the message says what happened to it.
             bashkit::Error::ResourceLimit(LimitExceeded::Timeout(_)) => format!(
-                "Shell: the command was stopped at its time limit of {} ms, before it finished. \
-                 The shell session is still usable, and it keeps what the command changed \
-                 before it was stopped.",
+                "Shell: the command was stopped at its time limit of {} ms, before it finished.",
                 self.limit.as_millis()
             ),
             other => format!("Shell: the shell did not finish the command: {other}"),
@@ -115,8 +112,9 @@ fn quoted(text: &str) -> String {
     format!("'{}'", text.replace('\'', r"'\''"))
 }
 
-/// Runs one call: waits for the run's session, runs the command in its
-/// shell, and returns the shell to the session.
+/// Runs one call: builds a shell for it, whose timers run on `timers`,
+/// runs the command there, and drops the shell when the call ends, so
+/// nothing in it reaches another call.
 ///
 /// # Errors
 /// Returns an invalid-arguments failure for arguments that do not match
@@ -125,16 +123,12 @@ fn quoted(text: &str) -> String {
 /// one of bashkit's limits. A command that exits with a failure of its
 /// own is an output.
 pub(crate) async fn call(
-    session: &Session,
     timers: &tokio::runtime::Handle,
     call: ToolCall<'_>,
 ) -> Result<ToolOutput, ToolError> {
     let invocation = Invocation::parse(call.arguments())?;
-    let mut held = session::turn(session).await;
-    let mut shell = held.take().unwrap_or_else(|| Shell::new(timers));
-    let answer = invocation.run(&mut shell, call).await;
-    *held = Some(shell);
-    answer
+    let mut shell = Shell::new(timers);
+    invocation.run(&mut shell, call).await
 }
 
 /// The text a finished command answers, in the shape of Cursor's `Shell`:

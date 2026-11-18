@@ -1,6 +1,6 @@
 {
   "wire_name": "Shell",
-  "description": "Executes a given command in a shell session with an optional time limit.\n\nThe shell is a bash interpreter that runs inside the run. Its commands are built in: there are no external programs such as git, npm, or docker, and no network.\n\n- The session lasts for the run: the working directory, variables, and functions carry over from one call to the next.\n- The shell reads the run's files. It cannot change them yet: a command that writes, deletes, or renames a file fails.\n- Output past {output_cap} characters is cut in the middle: the result keeps the start and the end and says so.\n- Calls share the one session and run one at a time. Chain dependent commands with `&&`.",
+  "description": "Executes a given command in a bash shell with an optional time limit.\n\nThe shell is a bash interpreter that runs inside the run. Its commands are built in: there are no external programs such as git, npm, or docker, and no network.\n\n- Each call starts a new shell at the root of the run's files. A `cd`, a variable, or a function lasts for that call alone.\n- Chain dependent commands with `&&` in one call.\n- The shell reads the run's files. It cannot change them yet: a command that writes, deletes, or renames a file fails.\n- Output past {output_cap} characters is cut in the middle: the result keeps the start and the end and says so.",
   "parameters": {
     "type": "object",
     "properties": {
@@ -10,7 +10,7 @@
       },
       "working_directory": {
         "type": "string",
-        "description": "The absolute path to the working directory to execute the command in (defaults to current directory)"
+        "description": "The absolute path to the working directory to execute the command in (defaults to the root of the run's files)"
       },
       "block_until_ms": {
         "type": "integer",

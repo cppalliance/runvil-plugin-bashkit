@@ -1,5 +1,5 @@
-//! One run's shell session: the [`Shell`] that every call of the run
-//! shares, and the turn a call takes on it.
+//! One call's shell: the [`Shell`] a call builds for itself, and the
+//! driver that polls a script in it and performs the script's reads.
 
 use std::future::{Future, poll_fn};
 use std::pin::pin;
@@ -7,11 +7,10 @@ use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 
-use bashkit::{Bash, ExecOptions, ExecResult, ExecutionLimits, SessionLimits};
-use runvil_plugin_sdk::{ToolCall, next_step};
+use bashkit::{Bash, ExecOptions, ExecResult, ExecutionLimits};
+use runvil_plugin_sdk::ToolCall;
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::{Mutex, MutexGuard};
 
 use crate::files::{FileRequest, RunFiles};
 use crate::shell::TIMEOUT_MS;
@@ -21,33 +20,14 @@ use crate::shell::TIMEOUT_MS;
 /// does every 32 files, so the Host can abandon it between two steps.
 const SLICE: usize = 32;
 
-/// The session of one run: its shell while no call uses it. It is `None`
-/// until the first call, and after a call the Host abandoned, whose shell
-/// went with it.
-pub(crate) type Session = Mutex<Option<Shell>>;
-
-/// Waits for `session`, which one call holds at a time. A call that finds
-/// it held ends its step and looks again on the next, because the Host
-/// sends the next step without being woken.
-///
-/// The call takes the shell out of what this returns and puts it back
-/// when it ends. A call the Host abandons never puts it back, so the next
-/// call makes a new shell and never sees one a script was cut off in.
-pub(crate) async fn turn(session: &Session) -> MutexGuard<'_, Option<Shell>> {
-    loop {
-        if let Ok(held) = session.try_lock() {
-            return held;
-        }
-        next_step().await;
-    }
-}
-
-/// A bash shell that lasts for a run: the working directory, variables,
-/// and functions one command leaves are there for the next. Its files are
-/// the run's, and it starts at their root.
+/// A bash shell that lasts for one call. Its files are the run's, and it
+/// starts at their root. A call that names a working directory runs two
+/// scripts in it, the `cd` and then the command, so the command starts
+/// where the `cd` left the shell. The working directory, variables, and
+/// functions a script leaves go with the shell when the call ends.
 pub(crate) struct Shell {
     bash: Bash,
-    /// The reads the shell's file system waits on, which the running call
+    /// The reads the shell's file system waits on, which the shell's call
     /// performs.
     requests: UnboundedReceiver<FileRequest>,
     /// The Plugin's runtime, which runs the timers behind the shell's time
@@ -75,9 +55,6 @@ impl Shell {
             // bashkit's default home is a directory the run does not have.
             .env("HOME", "/")
             .limits(limits)
-            // bashkit stops a session for good after 1,000 commands, which
-            // a long run would reach. Its limits on each command stay.
-            .session_limits(SessionLimits::unlimited())
             .build();
         Shell {
             bash,

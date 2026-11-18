@@ -91,8 +91,8 @@ impl RunFiles {
         make: impl FnOnce(oneshot::Sender<Answer<T>>) -> FileRequest,
     ) -> io::Result<T> {
         let (reply, answer) = oneshot::channel();
-        // The send fails when the shell's session is gone, and the answer
-        // never comes when the request was dropped unserved.
+        // The send fails when the receiving end of the channel is gone, and
+        // the answer never comes when the request was dropped unserved.
         self.requests.send(make(reply)).map_err(|_| no_call())?;
         match answer.await {
             Ok(Ok(value)) => Ok(value),

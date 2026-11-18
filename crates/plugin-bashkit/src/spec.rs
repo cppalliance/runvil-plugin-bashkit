@@ -74,7 +74,7 @@ mod tests {
         assert!(
             definition
                 .description
-                .starts_with("Executes a given command in a shell session")
+                .starts_with("Executes a given command in a bash shell")
         );
     }
 

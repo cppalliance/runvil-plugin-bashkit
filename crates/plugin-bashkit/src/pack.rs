@@ -1,5 +1,5 @@
 //! The `bash` Pack: its [`INFO`], and [`BashPack`], one run's instance,
-//! which lists the Pack's one tool and holds the run's shell session.
+//! which lists the Pack's one tool and performs its calls.
 
 use std::sync::Arc;
 
@@ -7,9 +7,7 @@ use runvil_plugin_sdk::{
     BoxFuture, Pack, PackInfo, ToolCall, ToolError, ToolErrorKind, ToolInfo, ToolOutput,
 };
 use tokio::runtime::Handle;
-use tokio::sync::Mutex;
 
-use crate::session::Session;
 use crate::spec::Definition;
 
 /// The Pack's name and description. Its name is `runvil/bash`, so its
@@ -20,23 +18,21 @@ pub(crate) const INFO: PackInfo =
 /// The tool's name within the Pack, the last segment of its Lua id.
 const SHELL: &str = "shell";
 
-/// One run's instance of the Pack: the tool's definition, which every run
-/// shares, and the run's own shell session.
+/// One run's instance of the Pack. It holds only what every run shares:
+/// the tool's definition and the handle of the Plugin's runtime. It holds
+/// no shell, because each call builds its own, so no call leaves anything
+/// here for another.
 pub(crate) struct BashPack {
     definition: Arc<Definition>,
     /// The Plugin's runtime, which runs every shell's timers.
     timers: Handle,
-    session: Session,
 }
 
 impl BashPack {
-    /// Makes the instance, with no shell yet: the first call makes it.
+    /// Makes one run's instance over `definition` and `timers`, the
+    /// handle of the Plugin's runtime.
     pub(crate) fn new(definition: Arc<Definition>, timers: Handle) -> BashPack {
-        BashPack {
-            definition,
-            timers,
-            session: Mutex::new(None),
-        }
+        BashPack { definition, timers }
     }
 }
 
@@ -61,7 +57,7 @@ impl Pack for BashPack {
                     format!("bash has no tool named {}", call.tool()),
                 ));
             }
-            crate::shell::call(&self.session, &self.timers, call).await
+            crate::shell::call(&self.timers, call).await
         })
     }
 }

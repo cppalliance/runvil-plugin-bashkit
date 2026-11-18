@@ -1,6 +1,6 @@
 //! The `Shell` tool through the Plugin's entry point: what a command
-//! answers, what a session keeps between calls, the time limit, the
-//! output cap, and the arguments a call may pass.
+//! answers, what a call leaves for the next, the time limit, the output
+//! cap, and the arguments a call may pass.
 
 use runvil_plugin_sdk::ToolErrorKind;
 use serde_json::json;
@@ -60,32 +60,30 @@ fn what_a_script_passes_between_commands_needs_no_file() {
 }
 
 #[test]
-fn a_session_keeps_variables_and_functions_between_calls() {
+fn a_variable_or_a_function_from_one_call_is_gone_in_the_next() {
     let loaded = loaded();
     let pack = loaded.new_pack(PACK).expect("the Pack instance is made");
     assert_eq!(
-        run(&pack, "kept=5; greet() { echo \"hello $1\"; }"),
-        answer(0, "")
+        run(
+            &pack,
+            "kept=5; export shown=6; say_hello() { echo \"hello $1\"; }; say_hello \"$kept $shown\""
+        ),
+        answer(0, "hello 5 6\n")
     );
-    assert_eq!(run(&pack, "echo $kept"), answer(0, "5\n"));
-    assert_eq!(run(&pack, "greet run"), answer(0, "hello run\n"));
+    assert_eq!(
+        run(&pack, "echo \"[$kept] [$shown]\""),
+        answer(0, "[] []\n")
+    );
+    assert_eq!(
+        run(&pack, "say_hello run"),
+        answer(127, "bash: line 1: say_hello: command not found\n")
+    );
 }
 
 #[test]
-fn two_runs_share_nothing() {
-    let loaded = loaded();
-    let first = loaded.new_pack(PACK).expect("the Pack instance is made");
-    let second = loaded.new_pack(PACK).expect("the Pack instance is made");
-    assert_eq!(run(&first, "kept=5"), answer(0, ""));
-    assert_eq!(run(&second, "echo \"[$kept]\""), answer(0, "[]\n"));
-}
-
-#[test]
-fn a_command_past_its_time_limit_is_stopped_and_the_session_goes_on() {
+fn a_command_past_its_time_limit_is_stopped_and_the_call_fails_with_the_limit() {
     let loaded = loaded();
     let pack = loaded.new_pack(PACK).expect("the Pack instance is made");
-    assert_eq!(run(&pack, "kept=5"), answer(0, ""));
-
     let stopped = shell(
         &pack,
         &json!({ "command": "sleep 20", "block_until_ms": 50 }),
@@ -94,12 +92,9 @@ fn a_command_past_its_time_limit_is_stopped_and_the_session_goes_on() {
     assert_eq!(stopped.kind(), ToolErrorKind::Backend);
     assert_eq!(
         stopped.message(),
-        "Shell: the command was stopped at its time limit of 50 ms, before it finished. The \
-         shell session is still usable, and it keeps what the command changed before it was \
-         stopped."
+        "Shell: the command was stopped at its time limit of 50 ms, before it finished."
     );
-
-    assert_eq!(run(&pack, "echo $kept"), answer(0, "5\n"));
+    assert_eq!(run(&pack, "echo after"), answer(0, "after\n"));
 }
 
 #[test]

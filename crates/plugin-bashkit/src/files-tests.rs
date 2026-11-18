@@ -73,12 +73,22 @@ fn a_long_listing_shows_no_write_bit_a_files_length_and_a_fixed_time() {
 }
 
 #[test]
-fn a_session_keeps_the_working_directory_between_calls() {
+fn a_cd_or_a_working_directory_from_one_call_is_gone_in_the_next() {
     let loaded = loaded();
     let pack = over(&loaded, files());
-    assert_eq!(run(&pack, "cd /work/deep"), answer(0, ""));
-    assert_eq!(run(&pack, "pwd"), answer(0, "/work/deep\n"));
-    assert_eq!(run(&pack, "cat ../../notes/b.md"), answer(0, "three\n"));
+    assert_eq!(
+        run(&pack, "cd /work/deep; pwd; cat ../../notes/b.md"),
+        answer(0, "/work/deep\nthree\n")
+    );
+    assert_eq!(run(&pack, "pwd; cat notes/b.md"), answer(0, "/\nthree\n"));
+
+    let moved = shell(
+        &pack,
+        &json!({ "command": "pwd", "working_directory": "/notes" }),
+    )
+    .expect("the command finishes");
+    assert_eq!(moved.text(), answer(0, "/notes\n"));
+    assert_eq!(run(&pack, "pwd"), answer(0, "/\n"));
 }
 
 #[test]

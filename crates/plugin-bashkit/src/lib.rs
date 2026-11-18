@@ -32,23 +32,20 @@
 //!
 //! # This build
 //!
-//! A call runs its `command` in the run's shell session and answers the
-//! exit code and then standard output followed by standard error, in one
+//! A call runs its `command` in a shell of its own and answers the exit
+//! code and then standard output followed by standard error, in one
 //! fenced block, as untrusted output. A command that exits with a failure
 //! is an output too. Output past 20,000 characters keeps its first and
 //! its last 10,000 around a line that counts what is left out.
 //!
-//! Each run has one session, which the first call makes. The working
-//! directory, variables, and functions a command leaves are there for the
-//! next call. The calls of a run take turns on the session, so two calls
-//! the Engine issues together run one after the other.
+//! Each call builds a new shell, which starts at the root of the run's
+//! files, and drops it when the call ends. A working directory, a
+//! variable, or a function lasts for that call alone, so a call finds
+//! nothing that an earlier call left in a shell. Calls that are in
+//! flight together each have a shell, and none waits for another.
 //!
 //! A call the Host abandons, as it does on a stop or a cancel, stops its
-//! script where it is and takes the shell with it. The next call starts a
-//! new session: the working directory is the root again, and the
-//! variables and functions are gone. A script cut off part way may have
-//! left the shell in a state no command would, so the shell is not kept.
-//! A call abandoned while it waits its turn changes nothing.
+//! script where it is, and its shell goes with it.
 //!
 //! Every command is built into bashkit: the shell starts no process, and
 //! it has no network. A command is stopped after 30 seconds, or after the
@@ -107,9 +104,9 @@
 //!   behind. Production code keeps nothing in a `static`.
 //! - bashkit's futures are polled only inside the context of that
 //!   runtime, which a timer needs to start.
-//! - A call takes the session's shell out for as long as it runs and
-//!   puts it back when it ends, so a call the Host abandons takes its
-//!   shell with it, and the next call starts a new session.
+//! - A call builds its shell and drops it when it ends, and a Pack
+//!   instance holds none, so nothing a call leaves in its shell reaches
+//!   another call.
 //! - The tool's wire name, description, and parameter schema come from
 //!   its JSON file. The one change made at build time fills the `{...}`
 //!   placeholders from the constants the code enforces.
