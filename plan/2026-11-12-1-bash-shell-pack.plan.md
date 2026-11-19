@@ -275,9 +275,9 @@ While the switch is on, every run, and so the model's provider, can read any fil
 
 ## Research in the workspace
 
-- [runvil-design/specs/cursor/agent-file-tools.md](runvil-design/specs/cursor/agent-file-tools.md), section "Shell" (line 3689): how Cursor's shell behaves, read from its bundle. The source of the output rule and the time-limit wording above. It holds no copy of the definition's text, so `shell.json` is taken from a Cursor session's tool list.
-- [runvil-design/research/2026-09/2026-09-20-terminals-pty-substrate.md](runvil-design/research/2026-09/2026-09-20-terminals-pty-substrate.md), section 5: bashkit as the agent's shell. It reached the same feature set, `default-features = false` plus `jq`, and shows that bashkit's `git` feature is a facade that must stay off.
-- [runvil-design/specs/cursor/master-delete.md](runvil-design/specs/cursor/master-delete.md), Table 1: what a shell `rm` costs next to a typed tool. For the writing stage.
+- A spec of Cursor's file tools, section "Shell" (line 3689): how Cursor's shell behaves, read from its bundle. The source of the output rule and the time-limit wording above. It holds no copy of the definition's text, so `shell.json` is taken from a Cursor session's tool list.
+- A research report, section 5: bashkit as the agent's shell. It reached the same feature set, `default-features = false` plus `jq`, and shows that bashkit's `git` feature is a facade that must stay off.
+- A report on the delete tool, Table 1: what a shell `rm` costs next to a typed tool. For the writing stage.
 
 ## Known limits
 
@@ -309,4 +309,4 @@ What the read-only stage is like to use, for the writing stage to know:
 ## Out of scope
 
 - Writing. It is the next stage: write functions in the contract (`runvil-plugin-api` and the loader in `runvil`), and each refusal here becoming a real write through the Host.
-- The pages in `runvil-docs` and `runvil-design` that list the Packs Workshop ships.
+- The pages in `runvil-docs` that list the Packs Workshop ships.
