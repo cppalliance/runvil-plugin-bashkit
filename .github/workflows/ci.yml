@@ -33,13 +33,15 @@ jobs:
 
   # The Plugin ships as a dynamic library for each platform, so the tests,
   # the structural checks among them, and its release build run on all
-  # three.
+  # three. The timeout fails a test that hangs in minutes, where GitHub
+  # would let the job run for six hours.
   test:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 

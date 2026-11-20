@@ -30,11 +30,18 @@ pub(crate) fn shell(pack: &PackRun<'_>, args: &Value) -> Result<ToolOutput, Tool
         .expect("the call follows the contract")
 }
 
-/// Steps `call`, which a test started, to its end. Returns how many of
-/// its steps ended pending, and how the call ended.
+/// Steps `call`, which a test started, to its end, as the Harness does:
+/// it sends a step only when the call is due one. So it waits with
+/// [`Call::wait`] before each step. That wait is over at once for a call
+/// that was sent no step yet, and after a step that left a file request.
+/// After any other step that ended pending, it lasts until the Plugin
+/// wakes the call, so a call that parks and is never woken fails its
+/// test here. Returns how many of the steps sent here ended pending, and
+/// how the call ended.
 pub(crate) fn stepped(call: &mut Call<'_>) -> (usize, Result<ToolOutput, ToolError>) {
     let mut pending = 0;
     loop {
+        call.wait();
         match call.step().expect("the step follows the contract") {
             Some(result) => return (pending, result),
             None => pending += 1,

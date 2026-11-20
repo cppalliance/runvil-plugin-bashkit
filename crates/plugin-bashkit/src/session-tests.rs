@@ -1,10 +1,10 @@
 //! Each call's shell through the Plugin's entry point: calls in flight
 //! together each have one, a call the Host abandons leaves nothing for
-//! the next, and the steps of a call take its script's file operations to
-//! the Host.
+//! the next, the steps of a call take its script's file operations to
+//! the Host, and a call that sleeps is parked until its timer wakes it.
 
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use runvil_plugin_sdk::testing::Files;
 use runvil_plugin_sdk::{ToolError, ToolErrorKind, ToolOutput};
@@ -277,7 +277,9 @@ fn a_step_polls_its_script_no_more_than_the_cap() {
     // request to the Host. So a test of such a path is answered in the
     // step that made it, and the script is polled again in that step. A
     // script that makes `tests` of them needs one poll more than that,
-    // and each step but the last gives it `POLL_CAP`.
+    // and each step but the last gives it `POLL_CAP`. A step that the cap
+    // stops leaves no request with the Host, so its call gets the next
+    // step only because it was woken during that step.
     for tests in [POLL_CAP - 1, POLL_CAP, 3 * POLL_CAP + 4] {
         let command = format!(
             "long=$(printf '%04100d' 0); \
@@ -290,4 +292,28 @@ fn a_step_polls_its_script_no_more_than_the_cap() {
             "{tests} tests"
         );
     }
+}
+
+#[test]
+fn a_call_that_sleeps_is_parked_until_its_timer_wakes_it() {
+    let loaded = loaded();
+    let pack = loaded.new_pack(PACK).expect("the Pack instance is made");
+    // Half a second is a time a float holds exactly, so the timer of the
+    // `sleep` is set for no less than this.
+    let asleep = Duration::from_millis(500);
+    let mut call = pack.start("shell", &args("sleep 0.5; echo slept"));
+    let started = Instant::now();
+    assert_eq!(call.step(), Ok(None), "the call sleeps");
+    // The step left no file request, so the call is parked: a Host sends
+    // it no step until the Plugin wakes it. The wait ends at that wake,
+    // and only the timer of the `sleep` makes one.
+    call.wait();
+    let woken = started.elapsed();
+    assert!(
+        woken >= asleep,
+        "the call was woken after {woken:?}, before its sleep of {asleep:?} was over"
+    );
+    // The step that the wake asked for finds the sleep over and ends the
+    // call, so the whole call takes two steps.
+    assert_eq!(call.step(), Ok(Some(Ok(exited(0, "slept\n")))));
 }

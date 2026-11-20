@@ -588,7 +588,8 @@ fn a_script_that_reads_many_files_ends_a_step_at_each_read() {
     );
 }
 
-/// Polls `future` once, as a step does, with a waker that does nothing.
+/// Polls `future` once. The waker does nothing, because the tests below
+/// poll by hand, with no tool call to wake.
 fn poll_once<F: Future>(future: F) -> Poll<F::Output> {
     let mut future = pin!(future);
     future

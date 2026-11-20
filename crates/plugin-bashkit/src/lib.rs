@@ -109,15 +109,17 @@
 //! # Where a command runs
 //!
 //! bash runs inside the steps of its tool call, on the Host's thread. A
-//! step polls the script, which runs until it ends, waits on a timer, or
-//! waits on a file operation. An operation is a request to the Host: the
-//! step ends with it, and the call's next step brings the answer. The
-//! Host takes one request of a call at a time, so operations that wait
-//! together, as in a pipeline and in `&` jobs, go to the Host one with
-//! each step, in the order the script asked for them. An operation that
-//! ends in the step that asked for it, as one on a path longer than the
-//! contract allows does, lets that step poll the script again, `POLL_CAP`
-//! times at most (`session.rs`).
+//! step polls the script, which runs until it ends or waits: on a file
+//! operation, on a timer, or on a parse that bashkit runs on another
+//! thread. An operation is a request to the Host: the step ends with it,
+//! and the call's next step brings the answer. The Host takes one request
+//! of a call at a time, so operations that wait together, as in a
+//! pipeline and in `&` jobs, go to the Host one with each step, in the
+//! order the script asked for them. An operation that ends in the step
+//! that asked for it, as one on a path longer than the contract allows
+//! does, lets that step poll the script again, `POLL_CAP` times at most
+//! (`session.rs`). A step that stops at that cap wakes its call, which
+//! asks the Host for the next step right away.
 //!
 //! An operation that its command stopped waiting for is dropped, which
 //! happens at the `timeout` builtin, at `kill`, and in a pipeline that
@@ -128,9 +130,25 @@
 //! progress when a script ends are awaited before the call goes on, so a
 //! call ends with no operation of its own in progress.
 //!
+//! A step that ends with no request to the Host parks its call, and the
+//! Host sends the next step when the Plugin wakes the call. So a call
+//! whose command waits on a `sleep` is parked until a timer wakes it,
+//! that of the `sleep` or that of the call's time limit, and it takes no
+//! step until then. The wake comes from a thread of the Plugin's runtime.
+//! A timer fires on its worker thread. A parse ends on a thread of its
+//! blocking pool, where bashkit parses the script of a `bash` or `sh`
+//! child, the text of an `eval` or a `source`, and a command longer than
+//! 16 KiB.
+//!
+//! While a command waits on a pipe beside the commands that run with it,
+//! bashkit checks its limits every 10 ms, and each check wakes the call.
+//! So a `sleep` inside such a pipeline, as in
+//! `{ sleep 5; echo done; } | cat`, has its call stepped at that rate.
+//! In `sleep 5 | cat` the two commands run one after the other, and the
+//! call is parked for the whole `sleep`.
+//!
 //! bashkit never pauses during other work, so a step lasts as long as
-//! that work does, and while a command waits on a `sleep` the Host steps
-//! the call with nothing to do.
+//! that work does.
 //!
 //! ## Invariants
 //!
@@ -149,12 +167,19 @@
 //! - A script's file operations that are in progress sit in the frame of
 //!   its driver, which drops one that nothing waits for, and returns only
 //!   when none is in progress.
-//! - The Plugin instance owns a tokio runtime with one worker thread,
-//!   whose only work is bashkit's timers. Dropping the instance drops the
-//!   runtime, which joins that thread, so an unload leaves no thread
-//!   behind. Production code keeps nothing in a `static`.
+//! - The Plugin instance owns a tokio runtime. Its one worker thread
+//!   runs bashkit's timers, and its blocking pool runs the parses that
+//!   bashkit sends there. Dropping the instance drops the runtime, which
+//!   joins every thread of it, so an unload leaves no thread behind.
+//!   Production code keeps nothing in a `static`.
 //! - bashkit's futures are polled only inside the context of that
-//!   runtime, which a timer needs to start.
+//!   runtime, which a timer and a parse on the blocking pool need to
+//!   start.
+//! - Each poll of a script gets the waker of its call, so what the
+//!   script waits on wakes the call: a timer from the runtime's worker
+//!   thread, and a parse from its blocking pool. A step that ends pending
+//!   with more to do and nothing to wait for wakes the call itself, as
+//!   the step that stops at `POLL_CAP` does.
 //! - A call builds its shell and drops it when it ends, and a Pack
 //!   instance holds none, so nothing a call leaves in its shell reaches
 //!   another call.

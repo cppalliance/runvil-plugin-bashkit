@@ -22,7 +22,9 @@ use crate::shell::TIMEOUT_MS;
 /// so a script comes this far only with operations that end before they
 /// reach the Host, as one on a path longer than the contract allows
 /// does. The step then ends, so the Host can abandon the call between two
-/// steps.
+/// steps. A step that ends pending parks its call, and this one has more
+/// to do, so it wakes the call first, which asks the Host for the next
+/// step right away.
 const POLL_CAP: usize = 32;
 
 /// A bash shell that lasts for one call. Its files are the run's, and it
@@ -89,7 +91,8 @@ impl Shell {
 /// Polls `script`, a script that bashkit runs, to its end, and performs
 /// its file operations through `call`. Each poll of the script runs
 /// inside the context of `timers`, because bashkit starts a tokio timer
-/// for its time limit and for each `sleep`, and a timer needs a runtime.
+/// for its time limit and for each `sleep`, and parses some scripts on
+/// tokio's blocking pool, and both need a runtime.
 ///
 /// A file operation the script asks for arrives in `requests` and becomes
 /// an operation in progress: the future of [`FileRequest::serve`], which
@@ -101,8 +104,18 @@ impl Shell {
 /// `kill`, and in a pipeline that failed.
 ///
 /// A step polls the script again only after an operation ended, and
-/// [`POLL_CAP`] times at most. Then the step ends, and a later step goes
-/// on: it brings the Host's next answer, or finds a timer that fired.
+/// [`POLL_CAP`] times at most. Then the step ends, which parks the call,
+/// and the Host sends the next step when it has the answer to a file
+/// request, or when the call is woken. The first covers every operation
+/// in progress: each has a request with the Host or in line for it. The
+/// second covers what else the script waits on, because each poll hands
+/// the script the call's waker. A timer wakes the call when it fires,
+/// from the worker thread of `timers`, so a call whose script sits in a
+/// `sleep` gets no step until then. A parse on the blocking pool wakes
+/// the call from a thread of that pool. bashkit also wakes the call
+/// inside a step, as one end of a pipe does for the other, which asks
+/// for the next step right away. A step that the cap stops wakes the
+/// call itself, for the same reason.
 ///
 /// When the script has ended, the operations still in progress are
 /// awaited before its output is returned. So this function returns with
@@ -121,7 +134,19 @@ async fn drive<F: Future>(
         let mut polls = 0;
         loop {
             let ended = advance(&mut operations, cx);
-            if polls == POLL_CAP || (polls > 0 && ended == 0) {
+            if polls > 0 && ended == 0 {
+                // The script waits, and what it waits on brings the next
+                // step: the answer to a file request, or a wake.
+                return Poll::Pending;
+            }
+            if polls == POLL_CAP {
+                // An operation ended since the last poll, so the script
+                // has more to do, and the cap ends the step all the same.
+                // A step that ends pending parks the call, so this one
+                // asks for the next step itself. The reply of that
+                // operation may have woken the call already, and the
+                // next step does not rest on it.
+                cx.waker().wake_by_ref();
                 return Poll::Pending;
             }
             polls += 1;

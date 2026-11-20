@@ -967,16 +967,16 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "runvil-plugin-sdk"
-version = "0.5.0"
-source = "git+https://github.com/cppalliance/runvil-plugin-api?rev=52a4905aca0a9c945a93dc4ee7ea815db85612e4#52a4905aca0a9c945a93dc4ee7ea815db85612e4"
+version = "0.6.0"
+source = "git+https://github.com/cppalliance/runvil-plugin-api?rev=74f9e08ba9cc524520fb4c90bd8ac372ba7f303f#74f9e08ba9cc524520fb4c90bd8ac372ba7f303f"
 dependencies = [
  "runvil-plugin-sys",
 ]
 
 [[package]]
 name = "runvil-plugin-sys"
-version = "0.5.0"
-source = "git+https://github.com/cppalliance/runvil-plugin-api?rev=52a4905aca0a9c945a93dc4ee7ea815db85612e4#52a4905aca0a9c945a93dc4ee7ea815db85612e4"
+version = "0.6.0"
+source = "git+https://github.com/cppalliance/runvil-plugin-api?rev=74f9e08ba9cc524520fb4c90bd8ac372ba7f303f#74f9e08ba9cc524520fb4c90bd8ac372ba7f303f"
 
 [[package]]
 name = "rustix"

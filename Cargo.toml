@@ -7,9 +7,9 @@ edition = "2024"
 license = "BSL-1.0"
 
 [workspace.dependencies]
-# The Plugin SDK at contract 0.5, pinned to a commit. A Host loads this
+# The Plugin SDK at contract 0.6, pinned to a commit. A Host loads this
 # Plugin only when its Harness speaks the same contract version.
-runvil-plugin-sdk = { version = "0.5.0", git = "https://github.com/cppalliance/runvil-plugin-api", rev = "52a4905aca0a9c945a93dc4ee7ea815db85612e4" }
+runvil-plugin-sdk = { version = "0.6.0", git = "https://github.com/cppalliance/runvil-plugin-api", rev = "74f9e08ba9cc524520fb4c90bd8ac372ba7f303f" }
 # The shell: a bash interpreter that runs in process, with every command
 # built in. Its default features are off, which leaves out its own tool
 # layer and the time zone database, and no feature that reaches the
